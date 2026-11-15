@@ -457,7 +457,12 @@ static func _bot_combat_rules(advice: Array[Dictionary], report: Dictionary) -> 
 		_add(advice, 70.0, "Vise la tête",
 				"%.0f %% de tirs à la tête. Un tir à la tête élimine un bot avant la fin de sa rafale ; trois balles dans le corps lui laissent le temps de répondre." % _number(report, "headshot_rate"), TONE_FIX)
 	if kills >= deaths * 3 and kills >= 4:
-		_add(advice, 36.0, "Tu domines à ce niveau", "%d éliminations pour %d morts : les bots seront plus rapides et plus précis à la prochaine session." % [kills, deaths], TONE_GOOD)
+		var rank_name := str(report.get("bot_rank_name", ""))
+		var next_step := "ils monteront de niveau à la prochaine session" if bool(report.get("bot_rank_adaptive", true)) else "passe au rang supérieur dans le menu"
+		_add(advice, 36.0, "Tu domines le rang %s" % rank_name, "%d éliminations pour %d morts contre des bots %s : %s." % [kills, deaths, rank_name, next_step], TONE_GOOD)
+	if _number(report, "bot_headshot_rate") >= 40.0 and deaths >= 2:
+		_add(advice, 76.0, "Ils te tuent à la tête",
+				"%.0f %% des balles qui te touchent sont à la tête. À ce rang les bots pré-visent ta hauteur de tête : change de hauteur (accroupi) ou de timing à chaque sortie." % _number(report, "bot_headshot_rate"), TONE_FIX)
 
 
 static func _bomb_defense_rules(advice: Array[Dictionary], report: Dictionary) -> void:

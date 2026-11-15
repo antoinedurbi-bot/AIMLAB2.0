@@ -12,6 +12,7 @@ const DrillCatalog := preload("res://scripts/drills/drill_catalog.gd")
 const TrainingPlan := preload("res://scripts/training_plan.gd")
 const RadarChart := preload("res://ui/radar_chart.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const BotRanks := preload("res://scripts/ai/bot_ranks.gd")
 
 const CROSSHAIR_STYLES := ["Croix", "Croix + point", "Point", "Cercle + point"]
 const QUALITY_LEVELS := ["Performance", "Qualité (SSAO, MSAA 4x)", "Ultra (+ SDFGI, SSR)"]
@@ -279,6 +280,14 @@ func _build_sensitivity_section() -> void:
 	weapon_option.item_selected.connect(_on_weapon_selected)
 	_add_row("Arme (exercices de combat)", weapon_option)
 
+	var rank_option := OptionButton.new()
+	rank_option.add_item("Adaptatif (suit tes résultats)")
+	for rank in BotRanks.count():
+		rank_option.add_item(BotRanks.rank_name(rank))
+	rank_option.select(GameSettings.bot_rank + 1)
+	rank_option.item_selected.connect(_on_bot_rank_selected)
+	_add_row("Rang des bots", rank_option)
+
 	var fov_spin := _make_spin(60.0, 130.0, 1.0, GameSettings.fov_horizontal, "°")
 	fov_spin.value_changed.connect(_on_fov_changed)
 	_add_row("FOV horizontal (16:9)", fov_spin)
@@ -315,6 +324,11 @@ func _on_game_sens_changed(value: float) -> void:
 	var converted: float = GameSettings.game_sens_to_cm(_selected_game(), value)
 	GameSettings.cm_per_360 = clampf(converted, 1.0, 300.0)
 	_commit_sensitivity()
+
+
+func _on_bot_rank_selected(index: int) -> void:
+	GameSettings.bot_rank = index - 1
+	GameSettings.save_settings()
 
 
 func _on_weapon_selected(index: int) -> void:

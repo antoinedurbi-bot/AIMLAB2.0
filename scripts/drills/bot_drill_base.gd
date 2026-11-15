@@ -6,13 +6,15 @@ extends "res://scripts/drills/drill_base.gd"
 const Humanoid := preload("res://scripts/humanoid_target.gd")
 const BotBrain := preload("res://scripts/ai/bot_brain.gd")
 const NavGrid := preload("res://scripts/ai/nav_grid.gd")
+const BotRanks := preload("res://scripts/ai/bot_ranks.gd")
 const HUMANOID_SCENE: PackedScene = preload("res://scenes/humanoid_target.tscn")
 
 ## Étendue couverte par la grille de navigation (x, z en mètres).
 const NAV_BOUNDS := Rect2(-76.0, -74.0, 152.0, 148.0)
 const PLAYER_MAX_HEALTH := 100.0
-## Dégâts d'une balle de bot.
-const BOT_DAMAGE := 24.0
+## Dégâts d'une balle de bot : une balle dans la tête élimine, le corps en demande trois.
+const BOT_HEAD_DAMAGE := 150.0
+const BOT_BODY_DAMAGE := 40.0
 
 var nav := NavGrid.new()
 var bots: Array[Humanoid] = []
@@ -25,6 +27,7 @@ var bot_kills: int = 0
 var damage_taken: float = 0.0
 var bot_shots: int = 0
 var bot_hits: int = 0
+var bot_head_hits: int = 0
 var head_hits: int = 0
 var body_hits: int = 0
 var kill_times: PackedFloat32Array = PackedFloat32Array()
@@ -38,6 +41,14 @@ func uses_movement() -> bool:
 ## Niveau des bots (0 à 1) déduit de la difficulté adaptative.
 func bot_skill() -> float:
 	return clampf(inverse_lerp(0.6, 1.8, difficulty), 0.0, 1.0)
+
+
+## Rang des bots : celui choisi dans le menu, ou celui de la difficulté adaptative.
+func bot_rank() -> int:
+	var chosen: int = GameSettings.bot_rank
+	if chosen >= 0:
+		return clampi(chosen, 0, BotRanks.count() - 1)
+	return BotRanks.rank_from_skill(bot_skill())
 
 
 ## À appeler dans setup() : arme automatique et grille de navigation.
@@ -56,7 +67,7 @@ func spawn_bot(at: Vector3) -> BotBrain:
 	add_child(bot)
 	var brain := BotBrain.new()
 	bot.add_child(brain)
-	brain.setup(bot, player, nav, bot_skill())
+	brain.setup(bot, player, nav, BotRanks.profile(bot_rank()))
 	brain.shot_fired.connect(_on_bot_shot)
 	bots.append(bot)
 	brains[bot.target_id] = brain
@@ -92,6 +103,9 @@ func resolve_player_shot(collider: Object, hit_position: Vector3, hit_normal: Ve
 		body_hits += 1
 	hud.flash_hit()
 	Sfx.play(&"hit")
+	var struck_brain := brain_of(struck)
+	if struck_brain != null:
+		struck_brain.notify_damage(player.global_position)
 	if not struck.apply_damage(player.weapon_damage(head)):
 		return null
 	var now: int = shot.get("time_usec", Time.get_ticks_usec())
@@ -128,31 +142,33 @@ func add_combat_stats(report: Dictionary) -> void:
 	report["bot_accuracy"] = Stats.percent(bot_hits, bot_shots)
 	report["headshot_rate"] = Stats.percent(head_hits, head_hits + body_hits)
 	report["avg_bot_kill_ms"] = Stats.mean(kill_times)
-	report["bot_skill"] = bot_skill()
+	report["bot_rank"] = bot_rank()
+	report["bot_rank_name"] = BotRanks.rank_name(bot_rank())
+	report["bot_rank_adaptive"] = GameSettings.bot_rank < 0
+	report["bot_headshot_rate"] = Stats.percent(bot_head_hits, bot_hits)
 	report["difficulty_level"] = difficulty
 
 
-func _on_bot_shot(hit: bool, origin: Vector3) -> void:
+func _on_bot_shot(hit: bool, head: bool, origin: Vector3, end_point: Vector3) -> void:
 	if finished:
 		return
 	bot_shots += 1
-	var eye := player.eye_position()
-	if hit:
-		bot_hits += 1
-		damage_taken += BOT_DAMAGE
-		player_health -= BOT_DAMAGE
-		fx.tracer(origin, eye + Vector3(0.0, -0.3, 0.0))
-		hud.show_feedback("TOUCHÉ · %d PV" % roundi(maxf(player_health, 0.0)), Hud.COLOR_BAD, 0.6)
-		hud.flash_miss()
-		Sfx.play(&"miss")
-		Telemetry.log_event("player_hit", {"health": player_health})
-		if player_health <= 0.0:
-			deaths += 1
-			player_health = PLAYER_MAX_HEALTH
-			Sfx.play(&"fail")
-			Telemetry.log_event("player_died", {})
-			on_player_died()
-	else:
-		# Balle perdue : le traceur passe à côté.
-		var miss := Vector3(rng.randf_range(-0.8, 0.8), rng.randf_range(-0.2, 0.6), rng.randf_range(-0.8, 0.8))
-		fx.tracer(origin, eye + miss)
+	fx.tracer(origin, end_point)
+	if not hit:
+		return
+	var damage := BOT_HEAD_DAMAGE if head else BOT_BODY_DAMAGE
+	bot_hits += 1
+	if head:
+		bot_head_hits += 1
+	damage_taken += damage
+	player_health -= damage
+	hud.show_feedback("%s · %d PV" % ["TÊTE" if head else "TOUCHÉ", roundi(maxf(player_health, 0.0))], Hud.COLOR_BAD, 0.6)
+	hud.flash_miss()
+	Sfx.play(&"miss")
+	Telemetry.log_event("player_hit", {"health": player_health, "head": head})
+	if player_health <= 0.0:
+		deaths += 1
+		player_health = PLAYER_MAX_HEALTH
+		Sfx.play(&"fail")
+		Telemetry.log_event("player_died", {"head": head})
+		on_player_died()

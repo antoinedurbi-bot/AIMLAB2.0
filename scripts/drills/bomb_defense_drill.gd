@@ -124,7 +124,7 @@ func finalize(report: Dictionary) -> void:
 	add_kpi(report, "MORTS", str(deaths), "%d points de dégâts subis" % roundi(damage_taken))
 	add_kpi(report, "TIRS À LA TÊTE", "%d %%" % roundi(Stats.percent(head_hits, head_hits + body_hits)) if hits > 0 else "—", "")
 	add_shooting_kpis(report)
-	add_kpi(report, "NIVEAU DES BOTS", "%d %%" % roundi(bot_skill() * 100.0), "réaction, précision et vitesse")
+	add_kpi(report, "RANG DES BOTS", BotRanks.rank_name(bot_rank()), "adaptatif" if GameSettings.bot_rank < 0 else "fixé dans le menu")
 	set_chart(report, "TEMPS POUR ÉLIMINER CHAQUE BOT (ms)", kill_times, "ms", 9000.0, true)
 	set_panels(report, ["chart", "heatmap"])
 

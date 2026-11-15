@@ -1,79 +1,128 @@
 extends Node
-## Intelligence d'un bot : machine à états posée sur une cible humanoïde.
+## Intelligence d'un bot : machine à états posée sur une cible humanoïde, avec
+## un modèle de joueur dont chaque facette dépend du rang (voir bot_ranks.gd).
 ##
-##   MOVING     — suit un chemin (A*) vers son objectif : une position fixe
-##                (la charge, un point de patrouille) ou le joueur s'il le traque.
-##   ENGAGING   — voit le joueur depuis assez longtemps (temps de réaction) :
-##                s'arrête, tire une rafale, strafe, recommence.
-##   DEFUSING   — arrivé sur son objectif, il y reste immobile (désamorçage).
+## États
+##   MOVING    — suit un chemin (A*) vers son objectif, ou vers le joueur s'il le traque.
+##   ENGAGING  — a le joueur en vue depuis plus que son temps de réaction : rafale,
+##               puis strafe ou mise à couvert, puis nouvelle sortie.
+##   COVERING  — rejoint une position hors de vue, attend, puis ressort.
+##   DEFUSING  — immobile sur son objectif (désamorçage) ; se défend s'il est attaqué.
 ##
-## Perception : ligne de vue de la tête du bot vers les yeux du joueur, et ouïe
-## (un joueur qui court à portée révèle sa position). Quand le bot perd le joueur
-## de vue, il se rend à sa dernière position connue.
+## Perception
+##   Vue    : ligne de vue ET champ de vision (le bot a une direction de regard,
+##            qu'il tourne à vitesse finie). De dos, il ne te voit pas.
+##   Ouïe   : te repère si tu cours à portée.
+##   Dégâts : se retourne vers l'origine du tir.
+##   Équipe : à partir d'un certain rang, les bots partagent ta dernière position.
 ##
-## Le niveau `skill` (0 = recrue, 1 = élite) règle temps de réaction, précision,
-## vitesse et durée des pauses. Le bot ne « triche » pas : il ne connaît la
-## position du joueur que s'il l'a vu ou entendu.
+## Visée
+##   Le bot vise un point (tête ou torse) avec un écart angulaire qui part de
+##   `aim_error` à ta découverte et retombe vers `steady_error` (son « flick »),
+##   augmenté de son retard sur ta vitesse latérale et du recul non compensé.
+##   Chaque balle est un vrai rayon : un mur, une caisse ou un pas de côté
+##   t'en protègent réellement.
 
-signal shot_fired(hit: bool, origin: Vector3)
+signal shot_fired(hit: bool, head: bool, origin: Vector3, end_point: Vector3)
 
-enum State { MOVING, ENGAGING, DEFUSING }
+enum State { MOVING, ENGAGING, COVERING, DEFUSING }
 
 const Humanoid := preload("res://scripts/humanoid_target.gd")
 const PlayerController := preload("res://scripts/player.gd")
 const NavGrid := preload("res://scripts/ai/nav_grid.gd")
 
 const WORLD_MASK := 1
-const HEARING_RANGE := 18.0
+## Décor + joueur : ce que les balles d'un bot peuvent toucher.
+const SHOT_MASK := 5
 const WAYPOINT_REACHED := 0.6
 const ARRIVAL_DISTANCE := 1.2
-## Délai sans voir le joueur avant d'abandonner le combat (s).
-const LOSE_SIGHT_SECONDS := 1.2
+const LOSE_SIGHT_SECONDS := 1.4
+const FIRE_INTERVAL := 0.1
+const RECOIL_PER_SHOT_DEG := 0.55
+const RUN_AND_GUN_ERROR_DEG := 4.0
+## Hauteur de la tête et du torse du joueur par rapport à ses yeux (m).
+const HEAD_OFFSET := -0.05
+const CHEST_OFFSET := -0.45
+## Un impact au-dessus de (yeux - cette marge) compte comme tête.
+const HEAD_ZONE := 0.18
+const MEMORY_SECONDS := 6.0
+
+## Dernière position connue du joueur partagée entre bots (rangs qui communiquent).
+static var shared_position: Vector3 = Vector3.ZERO
+static var shared_usec: int = 0
 
 var state: int = State.MOVING
-## Vrai : le bot cherche le joueur. Faux : il se rend à `objective`.
 var hunting: bool = false
 var objective: Vector3 = Vector3.ZERO
-## Vrai : arrivé sur l'objectif, le bot y reste (désamorçage).
 var hold_at_objective: bool = false
-
-var reaction_seconds: float = 0.45
-var accuracy: float = 0.5
-var move_speed: float = 4.4
-var burst_size: int = 4
-var fire_interval: float = 0.12
-var pause_seconds: float = 0.5
+var rank_profile: Dictionary = {}
 
 var _body: Humanoid
 var _player: PlayerController
 var _nav: NavGrid
 var _rng := RandomNumberGenerator.new()
+
+var _reaction: float = 0.45
+var _aim_error: float = 3.6
+var _settle: float = 0.56
+var _steady_error: float = 0.85
+var _tracking_lag: float = 0.18
+var _recoil_control: float = 0.45
+var _head_aim: float = 0.32
+var _fov: float = 65.0
+var _turn_speed: float = 290.0
+var _hearing: float = 15.0
+var _speed: float = 4.7
+var _burst: int = 5
+var _run_and_gun: float = 0.18
+var _cover: float = 0.3
+var _teamwork: bool = true
+
 var _path: PackedVector3Array = PackedVector3Array()
 var _path_index: int = 0
 var _repath_timer: float = 0.0
+var _facing_yaw: float = 0.0
+var _desired_yaw: float = 0.0
 var _seen_seconds: float = 0.0
-var _unseen_seconds: float = 0.0
+var _unseen_seconds: float = 99.0
+var _visible: bool = false
 var _last_known: Vector3 = Vector3.ZERO
-var _knows_player: bool = false
+var _known_usec: int = 0
 var _burst_left: int = 0
+var _burst_shot: int = 0
 var _shot_timer: float = 0.0
-var _strafe_timer: float = 0.0
+var _pause_timer: float = 0.0
 var _strafe_side: float = 1.0
-var _moved_this_frame: bool = false
+var _aim_head: bool = false
+var _moving_fire: bool = false
+var _cover_wait: float = 0.0
+var _fight_position: Vector3 = Vector3.ZERO
+var _moved: bool = false
 
 
-## `skill` : 0 (recrue) à 1 (élite).
-func setup(body: Humanoid, player: PlayerController, nav: NavGrid, skill: float) -> void:
+func setup(body: Humanoid, player: PlayerController, nav: NavGrid, profile: Dictionary) -> void:
 	_body = body
 	_player = player
 	_nav = nav
+	rank_profile = profile
 	_rng.randomize()
-	var level := clampf(skill, 0.0, 1.0)
-	reaction_seconds = lerpf(0.7, 0.22, level)
-	accuracy = lerpf(0.3, 0.8, level)
-	move_speed = lerpf(3.8, 5.4, level)
-	burst_size = roundi(lerpf(3.0, 6.0, level))
-	pause_seconds = lerpf(0.75, 0.3, level)
+	_reaction = profile.get("reaction", 0.45)
+	_aim_error = profile.get("aim_error", 3.6)
+	_settle = profile.get("settle", 0.56)
+	_steady_error = profile.get("steady_error", 0.85)
+	_tracking_lag = profile.get("tracking_lag", 0.18)
+	_recoil_control = profile.get("recoil_control", 0.45)
+	_head_aim = profile.get("head_aim", 0.32)
+	_fov = profile.get("fov", 65.0)
+	_turn_speed = profile.get("turn_speed", 290.0)
+	_hearing = profile.get("hearing", 15.0)
+	_speed = profile.get("speed", 4.7)
+	_burst = profile.get("burst", 5)
+	_run_and_gun = profile.get("run_and_gun", 0.18)
+	_cover = profile.get("cover", 0.3)
+	_teamwork = profile.get("teamwork", true)
+	# Chaque bot a son propre temps de réaction, à ±12 % de celui du rang.
+	_reaction *= _rng.randf_range(0.88, 1.12)
 	_body.moving_enabled = false
 
 
@@ -85,12 +134,21 @@ func go_to(world_position: Vector3, hold: bool) -> void:
 	_request_path(objective)
 
 
-## Le bot traque le joueur : il va vers sa dernière position connue, ou patrouille.
+## Le bot traque le joueur ; sans information, il patrouille vers `patrol_point`.
 func hunt(patrol_point: Vector3) -> void:
 	hunting = true
 	hold_at_objective = false
 	objective = patrol_point
-	_request_path(objective)
+	if state == State.MOVING:
+		_request_path(_last_known if _remembers_player() else objective)
+
+
+## À appeler quand le bot est touché : il se tourne vers l'origine du tir.
+func notify_damage(from_position: Vector3) -> void:
+	_learn_position(from_position)
+	_desired_yaw = _yaw_to(from_position)
+	if state == State.MOVING or state == State.COVERING:
+		_seen_seconds = maxf(_seen_seconds, _reaction * 0.5)
 
 
 func is_defusing() -> bool:
@@ -98,24 +156,26 @@ func is_defusing() -> bool:
 
 
 func is_engaging() -> bool:
-	return state == State.ENGAGING
+	return state == State.ENGAGING or state == State.COVERING
 
 
 func _process(delta: float) -> void:
 	if _body == null or not _body.alive or _player == null:
 		return
-	_moved_this_frame = false
+	_moved = false
 	_perceive(delta)
 	match state:
 		State.MOVING:
 			_update_moving(delta)
 		State.ENGAGING:
 			_update_engaging(delta)
+		State.COVERING:
+			_update_covering(delta)
 		State.DEFUSING:
-			# Un bot qui désamorce se défend s'il voit le joueur assez longtemps.
-			if _seen_seconds >= reaction_seconds * 1.5:
-				state = State.ENGAGING
-				_burst_left = burst_size
+			# Il lâche le désamorçage s'il a le joueur en vue assez longtemps.
+			if _seen_seconds >= _reaction * 1.3:
+				_start_engaging()
+	_facing_yaw = _rotate_towards(_facing_yaw, _desired_yaw, _turn_speed * delta)
 
 
 # ---------------------------------------------------------------------------
@@ -124,32 +184,60 @@ func _process(delta: float) -> void:
 
 func _perceive(delta: float) -> void:
 	var eye := _player.eye_position()
-	if _line_of_sight(_body.head_position(), eye):
+	var head := _body.head_position()
+	var distance := head.distance_to(eye)
+	var angle := absf(wrapf(_yaw_to(eye) - _facing_yaw, -180.0, 180.0))
+	_visible = (angle <= _fov or distance < 3.0) and _line_of_sight(head, eye)
+	if _visible:
 		_seen_seconds += delta
 		_unseen_seconds = 0.0
-		_last_known = _player.global_position
-		_knows_player = true
+		_learn_position(_player.global_position)
+		_desired_yaw = _yaw_to(eye)
 	else:
 		_unseen_seconds += delta
 		_seen_seconds = maxf(_seen_seconds - delta * 2.0, 0.0)
 		# Ouïe : un joueur qui court à portée trahit sa position.
-		var distance := _body.global_position.distance_to(_player.global_position)
-		if distance <= HEARING_RANGE and _player.horizontal_speed() > PlayerController.LOUD_SPEED:
-			_last_known = _player.global_position
-			_knows_player = true
+		var feet_distance := _body.global_position.distance_to(_player.global_position)
+		if feet_distance <= _hearing and _player.horizontal_speed() > PlayerController.LOUD_SPEED:
+			_learn_position(_player.global_position)
+			_desired_yaw = _yaw_to(_player.global_position)
+		elif _teamwork and shared_usec > _known_usec and float(Time.get_ticks_usec() - shared_usec) / 1000000.0 <= MEMORY_SECONDS:
+			_last_known = shared_position
+			_known_usec = shared_usec
 
-	if state != State.ENGAGING and _seen_seconds >= reaction_seconds:
-		state = State.ENGAGING
-		_burst_left = burst_size
-		_shot_timer = 0.0
+	if state == State.MOVING and _seen_seconds >= _reaction:
+		_start_engaging()
 	elif state == State.ENGAGING and _unseen_seconds >= LOSE_SIGHT_SECONDS:
 		state = State.MOVING
-		_request_path(_last_known if hunting else objective)
+		_request_path(_last_known if hunting or not hold_at_objective else objective)
+
+
+func _learn_position(world_position: Vector3) -> void:
+	_last_known = world_position
+	_known_usec = Time.get_ticks_usec()
+	if _teamwork:
+		shared_position = world_position
+		shared_usec = _known_usec
+
+
+func _remembers_player() -> bool:
+	return _known_usec > 0 and float(Time.get_ticks_usec() - _known_usec) / 1000000.0 <= MEMORY_SECONDS
 
 
 func _line_of_sight(from: Vector3, to: Vector3) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(from, to, WORLD_MASK)
 	return _body.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+
+## Yaw (°) de la direction allant du bot vers `world_position`.
+func _yaw_to(world_position: Vector3) -> float:
+	var offset := Vector3(world_position.x - _body.global_position.x, 0.0, world_position.z - _body.global_position.z)
+	return rad_to_deg(atan2(-offset.x, -offset.z))
+
+
+func _rotate_towards(current: float, target: float, step: float) -> float:
+	var difference := wrapf(target - current, -180.0, 180.0)
+	return current + clampf(difference, -step, step)
 
 
 # ---------------------------------------------------------------------------
@@ -158,14 +246,12 @@ func _line_of_sight(from: Vector3, to: Vector3) -> bool:
 
 func _update_moving(delta: float) -> void:
 	_repath_timer -= delta
-	if hunting and _knows_player and _repath_timer <= 0.0:
+	if hunting and _remembers_player() and _repath_timer <= 0.0:
 		_request_path(_last_known)
 	if _path_index >= _path.size():
 		if hold_at_objective and _flat_distance(_body.global_position, objective) <= ARRIVAL_DISTANCE + 0.6:
 			state = State.DEFUSING
-		elif hunting and _repath_timer <= 0.0:
-			# Rien trouvé à la dernière position connue : retour en patrouille.
-			_knows_player = false
+		elif _repath_timer <= 0.0:
 			_request_path(objective)
 		return
 	var target := _path[_path_index]
@@ -173,11 +259,17 @@ func _update_moving(delta: float) -> void:
 	if _flat_distance(_body.global_position, target) <= limit:
 		_path_index += 1
 		return
-	_step_towards(target, move_speed * delta)
+	# En approche d'une position connue du joueur, le bot regarde vers elle (pré-visée) ;
+	# sinon il regarde où il va.
+	if _remembers_player() and _flat_distance(_body.global_position, _last_known) < 20.0:
+		_desired_yaw = _yaw_to(_last_known)
+	else:
+		_desired_yaw = _yaw_to(target)
+	_step_towards(target, _speed * delta)
 
 
 func _request_path(destination: Vector3) -> void:
-	_repath_timer = 1.5
+	_repath_timer = 1.2
 	_path = _nav.find_path(_body.global_position, destination)
 	_path_index = 1 if _path.size() > 1 else 0
 
@@ -188,7 +280,7 @@ func _step_towards(target: Vector3, distance: float) -> void:
 	if length < 0.001:
 		return
 	_body.global_position += offset / length * minf(distance, length)
-	_moved_this_frame = true
+	_moved = true
 
 
 func _flat_distance(a: Vector3, b: Vector3) -> float:
@@ -199,40 +291,139 @@ func _flat_distance(a: Vector3, b: Vector3) -> float:
 # Combat
 # ---------------------------------------------------------------------------
 
+func _start_engaging() -> void:
+	state = State.ENGAGING
+	_fight_position = _body.global_position
+	_begin_burst()
+
+
+func _begin_burst() -> void:
+	_burst_left = _burst + _rng.randi_range(-1, 1)
+	_burst_shot = 0
+	_shot_timer = 0.0
+	_aim_head = _rng.randf() < _head_aim
+	_moving_fire = _rng.randf() < _run_and_gun
+
+
 func _update_engaging(delta: float) -> void:
 	if _burst_left > 0:
-		# Rafale : le bot est à l'arrêt, c'est la fenêtre pour le punir.
+		# Les joueurs peu expérimentés tirent en marchant ; les autres s'arrêtent.
+		if _moving_fire:
+			_strafe(delta, 0.7)
 		_shot_timer -= delta
-		if _shot_timer <= 0.0 and _unseen_seconds <= 0.0:
-			_shot_timer = fire_interval
-			_burst_left -= 1
+		if _shot_timer <= 0.0 and _visible:
+			_shot_timer = FIRE_INTERVAL
 			_fire()
-			if _burst_left == 0:
-				_strafe_timer = pause_seconds
-				_strafe_side = 1.0 if _rng.randf() < 0.5 else -1.0
+			_burst_left -= 1
+			_burst_shot += 1
+			if _burst_left <= 0:
+				_after_burst()
+		elif not _visible and _unseen_seconds > 0.35:
+			_after_burst()
 		return
-	# Entre deux rafales : strafe perpendiculaire à la ligne de tir.
-	_strafe_timer -= delta
+	# Entre deux rafales : strafe pour ne pas rester une cible fixe.
+	_pause_timer -= delta
+	_strafe(delta, 0.85)
+	if _pause_timer <= 0.0:
+		_begin_burst()
+
+
+func _after_burst() -> void:
+	_burst_left = 0
+	_strafe_side = 1.0 if _rng.randf() < 0.5 else -1.0
+	_pause_timer = _rng.randf_range(0.25, 0.55)
+	# Les bons joueurs ne restent pas à découvert : ils se cachent puis ressortent.
+	var hurt := _body.health < 60.0
+	if _rng.randf() < _cover or (hurt and _cover > 0.1):
+		var spot := _find_cover()
+		if spot != Vector3.INF:
+			state = State.COVERING
+			_cover_wait = _rng.randf_range(0.5, 1.4) + (0.8 if hurt else 0.0)
+			_path = _nav.find_path(_body.global_position, spot)
+			_path_index = 1 if _path.size() > 1 else 0
+
+
+func _strafe(delta: float, speed_factor: float) -> void:
 	var to_player: Vector3 = _player.global_position - _body.global_position
-	var side := Vector3(-to_player.z, 0.0, to_player.x).normalized() * _strafe_side
-	var next := _body.global_position + side * move_speed * 0.8 * delta
+	var side: Vector3 = Vector3(-to_player.z, 0.0, to_player.x).normalized() * _strafe_side
+	var next: Vector3 = _body.global_position + side * _speed * speed_factor * delta
 	if _nav.is_walkable(next):
 		_body.global_position = next
-		_moved_this_frame = true
+		_moved = true
 	else:
 		_strafe_side = -_strafe_side
-	if _strafe_timer <= 0.0:
-		_burst_left = burst_size
-		_shot_timer = 0.08
 
 
-## Tire une balle : la probabilité de toucher baisse avec la distance et quand
-## le joueur se déplace vite.
+## Cherche à proximité une position d'où le joueur ne voit pas la tête du bot.
+## Renvoie Vector3.INF s'il n'y en a pas.
+func _find_cover() -> Vector3:
+	var eye := _player.eye_position()
+	var best := Vector3.INF
+	var best_distance := INF
+	for ring in range(1, 4):
+		for step in 8:
+			var angle := TAU * float(step) / 8.0 + float(ring) * 0.4
+			var candidate: Vector3 = _body.global_position + Vector3(cos(angle), 0.0, sin(angle)) * float(ring) * 1.8
+			if not _nav.is_walkable(candidate):
+				continue
+			var head: Vector3 = candidate + Vector3(0.0, Humanoid.HEAD_HEIGHT, 0.0)
+			if _line_of_sight(eye, head):
+				continue
+			var distance: float = candidate.distance_to(_body.global_position)
+			if distance < best_distance:
+				best_distance = distance
+				best = candidate
+	return best
+
+
+func _update_covering(delta: float) -> void:
+	if _path_index < _path.size():
+		var target := _path[_path_index]
+		if _flat_distance(_body.global_position, target) <= WAYPOINT_REACHED:
+			_path_index += 1
+		else:
+			_step_towards(target, _speed * delta)
+		return
+	_cover_wait -= delta
+	_desired_yaw = _yaw_to(_last_known)
+	if _cover_wait > 0.0:
+		return
+	# Ressortie : retour vers la position de tir, visée déjà posée sur l'angle.
+	state = State.MOVING
+	_seen_seconds = _reaction * 0.6
+	_request_path(_fight_position if not hunting else _last_known)
+
+
+## Tire une balle : un rayon partant de la tête du bot vers son point de visée,
+## dévié de son écart de visée du moment.
 func _fire() -> void:
-	var distance := _body.global_position.distance_to(_player.global_position)
-	var chance := accuracy * clampf(1.15 - distance / 60.0, 0.35, 1.0)
-	if _player.horizontal_speed() > PlayerController.LOUD_SPEED:
-		chance *= 0.6
-	if _player.is_crouching():
-		chance *= 0.85
-	shot_fired.emit(_rng.randf() < clampf(chance, 0.05, 0.95), _body.head_position())
+	var origin := _body.head_position()
+	var eye := _player.eye_position()
+	var aim_point: Vector3 = eye + Vector3(0.0, HEAD_OFFSET if _aim_head else CHEST_OFFSET, 0.0)
+	var direction: Vector3 = (aim_point - origin).normalized()
+	var distance: float = origin.distance_to(aim_point)
+
+	# Écart de visée (écart-type, en degrés).
+	var sigma := _steady_error + _aim_error * exp(-_seen_seconds / maxf(_settle, 0.05))
+	var lateral_speed := absf(_player.lateral_velocity())
+	sigma += rad_to_deg(lateral_speed / maxf(distance, 1.0)) * _tracking_lag
+	sigma += RECOIL_PER_SHOT_DEG * float(_burst_shot) * (1.0 - _recoil_control)
+	if _moved:
+		sigma += RUN_AND_GUN_ERROR_DEG
+	var error := Vector2(_rng.randfn(0.0, sigma), _rng.randfn(0.0, sigma))
+	# Le recul non compensé fait monter les balles.
+	error.y += RECOIL_PER_SHOT_DEG * float(_burst_shot) * (1.0 - _recoil_control) * 0.5
+
+	var right: Vector3 = direction.cross(Vector3.UP).normalized()
+	var up: Vector3 = right.cross(direction)
+	var shot_direction: Vector3 = (direction + right * tan(deg_to_rad(error.x)) + up * tan(deg_to_rad(error.y))).normalized()
+	var end_point: Vector3 = origin + shot_direction * 200.0
+	var query := PhysicsRayQueryParameters3D.create(origin, end_point, SHOT_MASK)
+	var result := _body.get_world_3d().direct_space_state.intersect_ray(query)
+	var hit := false
+	var head := false
+	if not result.is_empty():
+		end_point = result["position"]
+		hit = result["collider"] == _player
+		head = hit and end_point.y >= eye.y - HEAD_ZONE
+	shot_fired.emit(hit, head, origin, end_point)

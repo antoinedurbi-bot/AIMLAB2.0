@@ -60,6 +60,8 @@ var export_raw_telemetry: bool = true
 var last_drill: String = "gridshot"
 ## Identifiant du profil d'arme (voir scripts/weapons.gd).
 var weapon: String = "rifle"
+## Rang des bots : -1 = adaptatif, sinon 0 (Fer) à 8 (Radiant).
+var bot_rank: int = -1
 
 
 func _ready() -> void:
@@ -200,6 +202,7 @@ func save_settings() -> void:
 	cfg.set_value("data", "export_raw_telemetry", export_raw_telemetry)
 	cfg.set_value("data", "last_drill", last_drill)
 	cfg.set_value("data", "weapon", weapon)
+	cfg.set_value("data", "bot_rank", bot_rank)
 	var error := cfg.save(SAVE_PATH)
 	if error != OK:
 		push_warning("KINETIC // AIM : impossible d'enregistrer %s (erreur %d)." % [SAVE_PATH, error])
@@ -235,6 +238,7 @@ func load_settings() -> void:
 	var stored_weapon: Variant = cfg.get_value("data", "weapon", weapon)
 	if stored_weapon is String:
 		weapon = stored_weapon
+	bot_rank = clampi(_read_int(cfg, "data", "bot_rank", bot_rank), -1, 8)
 
 
 func _read_float(cfg: ConfigFile, section: String, key: String, fallback: float) -> float:

@@ -79,12 +79,12 @@ func finalize(report: Dictionary) -> void:
 	report["kill_death_ratio"] = ratio
 	report["success_ratio"] = clampf(ratio / 3.0, 0.0, 1.0)
 	add_kpi(report, "ÉLIMINATIONS", str(bot_kills), "%d morts · ratio %.1f" % [deaths, ratio])
-	add_kpi(report, "DÉGÂTS SUBIS", str(roundi(damage_taken)), "les bots touchent %d %% de leurs balles" % roundi(Stats.percent(bot_hits, bot_shots)))
+	add_kpi(report, "DÉGÂTS SUBIS", str(roundi(damage_taken)), "les bots touchent %d %% de leurs balles, dont %d à la tête" % [roundi(Stats.percent(bot_hits, bot_shots)), bot_head_hits])
 	add_kpi(report, "TIRS À LA TÊTE", "%d %%" % roundi(Stats.percent(head_hits, head_hits + body_hits)) if hits > 0 else "—", "")
 	add_kpi(report, "TEMPS POUR ÉLIMINER", "%.1f s" % (Stats.mean(kill_times) / 1000.0) if bot_kills > 0 else "—", "de l'apparition du bot à son élimination")
 	add_shooting_kpis(report)
 	add_kpi(report, "BRUIT", "%d m" % roundi(player.loud_distance), "parcourus en courant, audibles par les bots")
-	add_kpi(report, "NIVEAU DES BOTS", "%d %%" % roundi(bot_skill() * 100.0), "réaction, précision et vitesse")
+	add_kpi(report, "RANG DES BOTS", BotRanks.rank_name(bot_rank()), "adaptatif" if GameSettings.bot_rank < 0 else "fixé dans le menu")
 	set_chart(report, "TEMPS POUR ÉLIMINER CHAQUE BOT (ms)", kill_times, "ms", 12000.0, true)
 	set_panels(report, ["chart", "heatmap"])
 
