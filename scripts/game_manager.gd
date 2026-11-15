@@ -1,93 +1,72 @@
 extends Node3D
-## Chef d'orchestre de la scène principale : états de jeu, mode Gridshot,
-## score, effets visuels et liaison entre le joueur, l'UI et la télémétrie.
+## Chef d'orchestre de la scène principale : états de jeu, chargement de la
+## carte et de l'exercice choisis, liaison entre le joueur, l'UI, la télémétrie,
+## l'historique et le coach.
 ##
-## Gridshot : une grille invisible fait face au joueur. `simultaneous_targets`
-## sphères y sont présentes en permanence ; dès qu'une cible est détruite, une
-## autre apparaît instantanément dans une cellule libre différente.
+## Déroulé d'une session : menu → compte à rebours (carte chargée, joueur placé,
+## cibles en place) → exercice → rapport (statistiques, conseil, enregistrement).
 
 enum State { MENU, COUNTDOWN, PLAYING, RESULTS }
 
-const TARGET_SCENE: PackedScene = preload("res://scenes/target.tscn")
-const EXPLOSION_SCENE: PackedScene = preload("res://scenes/effects/target_explosion.tscn")
-const IMPACT_SCENE: PackedScene = preload("res://scenes/effects/impact.tscn")
-const TRACER_SCENE: PackedScene = preload("res://scenes/effects/tracer.tscn")
-
 const PlayerController := preload("res://scripts/player.gd")
-const AimTarget := preload("res://scripts/target.gd")
-const Tracer := preload("res://scripts/tracer.gd")
+const DrillBase := preload("res://scripts/drills/drill_base.gd")
+const DrillCatalog := preload("res://scripts/drills/drill_catalog.gd")
+const FxSpawner := preload("res://scripts/fx_spawner.gd")
+const Coach := preload("res://scripts/coach.gd")
 const Hud := preload("res://ui/hud.gd")
 const MainMenu := preload("res://ui/main_menu.gd")
 const StatsDashboard := preload("res://ui/stats_dashboard.gd")
 
-## Point situé derrière le mur du fond : les effets y sont instanciés une fois
-## pendant le compte à rebours pour compiler leurs shaders hors champ.
-const PREWARM_POSITION := Vector3(0.0, 4.0, -30.0)
 ## Plafond d'images appliqué hors session (menu, rapport) quand le FPS est illimité.
 const MENU_MAX_FPS := 120
+## Nombre de sessions précédentes utilisées pour situer la session en cours.
+const HISTORY_WINDOW := 5
+## Distance devant le joueur où les effets sont préchauffés, derrière les murs.
+const PREWARM_DISTANCE := 45.0
 
-@export_group("Session")
-@export var mode_name: String = "GRIDSHOT"
-@export_range(5.0, 300.0, 1.0) var session_duration: float = 60.0
 @export_range(0.0, 10.0, 0.5) var countdown_duration: float = 3.0
 
-@export_group("Gridshot")
-@export_range(2, 9) var grid_columns: int = 5
-@export_range(2, 9) var grid_rows: int = 5
-## Distance entre deux cellules voisines (m).
-@export var cell_spacing: float = 1.0
-## Distance entre les yeux du joueur et le plan de la grille (m).
-@export var grid_distance: float = 9.0
-@export var target_radius: float = 0.38
-@export_range(1, 8) var simultaneous_targets: int = 3
-
-@export_group("Score")
-@export var hit_points: int = 100
-## Bonus maximal accordé quand deux cibles sont détruites coup sur coup.
-@export var speed_bonus_points: int = 100
-@export var miss_penalty: int = 35
-
 var state: int = State.MENU
-var score: int = 0
-var shots: int = 0
-var hits: int = 0
 
-## Vector2i (cellule) -> cible présente dans cette cellule.
-var _occupied: Dictionary = {}
-var _next_target_id: int = 0
+var _map: Node3D
+var _map_path: String = DrillCatalog.MAP_RANGE
+var _drill: DrillBase
+var _drill_id: String = "gridshot"
+## Position du joueur dans la scène principale : point d'apparition par défaut du stand de tir.
+var _default_spawn: Vector3 = Vector3.ZERO
 var _session_start_usec: int = 0
 var _countdown_end_usec: int = 0
-var _last_hit_usec: int = 0
 var _last_countdown_shown: int = -1
-var _rng := RandomNumberGenerator.new()
+var _shown_score: int = -1
+var _shown_shots: int = -1
 
-@onready var arena: Node3D = $Arena
 @onready var player: PlayerController = $Player
-@onready var targets_root: Node3D = $Targets
-@onready var effects_root: Node3D = $Effects
+@onready var drill_root: Node3D = $Drill
+@onready var fx: FxSpawner = $Effects
 @onready var hud: Hud = $UI/HUD
 @onready var main_menu: MainMenu = $UI/MainMenu
 @onready var dashboard: StatsDashboard = $UI/StatsDashboard
 
 
 func _ready() -> void:
-	_rng.randomize()
+	_map = $Arena
+	_default_spawn = player.global_position
 	player.fired.connect(_on_player_fired)
 	main_menu.play_requested.connect(start_session)
 	main_menu.quit_requested.connect(_quit)
-	dashboard.replay_requested.connect(start_session)
+	dashboard.replay_requested.connect(_replay)
 	dashboard.menu_requested.connect(_show_menu)
 	GameSettings.graphics_changed.connect(_apply_graphics)
 	_apply_graphics()
 	_show_menu()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	match state:
 		State.COUNTDOWN:
 			_update_countdown()
 		State.PLAYING:
-			_update_session()
+			_update_session(delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -97,9 +76,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 	elif event is InputEventKey:
 		var key := event as InputEventKey
-		if key.pressed and not key.echo and key.keycode == KEY_F11:
+		if not key.pressed or key.echo:
+			return
+		if key.keycode == KEY_F11:
 			GameSettings.fullscreen = not GameSettings.fullscreen
 			GameSettings.commit_graphics()
+			get_viewport().set_input_as_handled()
+		elif key.physical_keycode == KEY_SPACE and state == State.PLAYING and _drill != null:
+			_drill.on_action()
 			get_viewport().set_input_as_handled()
 
 
@@ -114,29 +98,58 @@ func _notification(what: int) -> void:
 # États de jeu
 # ---------------------------------------------------------------------------
 
-func start_session() -> void:
-	if Telemetry.recording:
-		Telemetry.cancel_session()
-	_clear_targets()
-	score = 0
-	shots = 0
-	hits = 0
+## Charge la carte de l'exercice, l'instancie et lance le compte à rebours.
+func start_session(drill_id: String) -> void:
+	_abort_session()
+	var entry: Dictionary = DrillCatalog.find(drill_id)
+	_drill_id = entry.get("id", "gridshot")
+	var map_path: String = entry.get("map", DrillCatalog.MAP_RANGE)
+	_load_map(map_path)
+
+	var drill_script := entry.get("script") as GDScript
+	var drill := drill_script.new() as DrillBase
+	drill.drill_id = _drill_id
+	drill.title = entry.get("title", "")
+	drill.duration = entry.get("duration", 60.0)
+	drill.player = player
+	drill.hud = hud
+	drill.fx = fx
+	drill.map_root = _map
+	var params: Dictionary = entry.get("params", {})
+	for key: Variant in params:
+		drill.set(str(key), params[key])
+	_drill = drill
+	drill_root.add_child(drill)
 
 	main_menu.visible = false
 	dashboard.visible = false
 	hud.visible = true
-	hud.reset(mode_name, session_duration)
+	hud.reset(drill.title, drill.duration)
+	_shown_score = -1
+	_shown_shots = -1
 
-	player.reset_view()
+	# Le joueur est placé avant setup() : les exercices s'appuient sur sa position.
+	var spawn_name := drill.spawn_marker()
+	if spawn_name == "":
+		player.teleport(_default_spawn, 0.0)
+	else:
+		player.teleport(drill.marker(spawn_name), drill.marker_yaw(spawn_name))
 	player.look_enabled = true
 	player.fire_enabled = false
+	player.move_enabled = false
+	player.movement_inaccuracy = drill.uses_movement()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 	_set_state(State.COUNTDOWN)
 	_countdown_end_usec = Time.get_ticks_usec() + int(countdown_duration * 1000000.0)
 	_last_countdown_shown = -1
-	_fill_grid()
-	_prewarm_effects()
+	drill.setup()
+	var forward: Vector3 = -player.camera.global_transform.basis.z
+	fx.prewarm(player.eye_position() + forward * PREWARM_DISTANCE + Vector3(0.0, 2.0, 0.0))
+
+
+func _replay() -> void:
+	start_session(_drill_id)
 
 
 func _update_countdown() -> void:
@@ -148,22 +161,35 @@ func _update_countdown() -> void:
 	if shown != _last_countdown_shown:
 		_last_countdown_shown = shown
 		hud.show_countdown(str(shown))
+		Sfx.play(&"tick")
 
 
 func _begin_play() -> void:
 	_set_state(State.PLAYING)
 	_session_start_usec = Time.get_ticks_usec()
-	_last_hit_usec = _session_start_usec
-	player.fire_enabled = true
+	player.fire_enabled = _drill.uses_fire()
+	player.move_enabled = _drill.uses_movement()
 	hud.show_countdown("GO", 0.4)
-	Telemetry.begin_session(mode_name, session_duration, player.camera)
+	Sfx.play(&"go")
+	Telemetry.begin_session(_drill.title, _drill.duration, player.camera, player)
+	_drill.begin()
 
 
-func _update_session() -> void:
+func _update_session(delta: float) -> void:
 	var elapsed := float(Time.get_ticks_usec() - _session_start_usec) / 1000000.0
-	var remaining := session_duration - elapsed
-	hud.set_time_remaining(maxf(remaining, 0.0))
-	if remaining <= 0.0:
+	_drill.elapsed = elapsed
+	_drill.update(delta)
+
+	if _drill.score != _shown_score:
+		_shown_score = _drill.score
+		hud.set_score(_drill.score)
+	if _drill.shots != _shown_shots:
+		_shown_shots = _drill.shots
+		hud.set_accuracy(_drill.hits, _drill.shots)
+	if _drill.shows_clock():
+		hud.set_time_remaining(maxf(_drill.duration - elapsed, 0.0))
+
+	if _drill.finished or elapsed >= _drill.duration:
 		_finish_session()
 
 
@@ -171,25 +197,57 @@ func _finish_session() -> void:
 	_set_state(State.RESULTS)
 	player.look_enabled = false
 	player.fire_enabled = false
-	var report: Dictionary = Telemetry.end_session(score)
-	_clear_targets()
+	player.move_enabled = false
+	player.reset_input()
+
+	var report: Dictionary = Telemetry.end_session(_drill.score)
+	report["drill"] = _drill_id
+	_drill.finalize(report)
+
+	var previous: Array[Dictionary] = SessionHistory.recent(_drill_id, HISTORY_WINDOW)
+	var advice: Array[Dictionary] = Coach.build_advice(_drill_id, report, previous)
+	if not advice.is_empty():
+		report["advice"] = advice[0].get("title", "")
+	if GameSettings.export_raw_telemetry:
+		var stamp := Time.get_datetime_string_from_system().replace(":", "-")
+		var exported: String = Telemetry.export_raw("%s_%s" % [stamp, _drill_id], report)
+		if exported != "":
+			report["export_path"] = ProjectSettings.globalize_path(exported)
+	SessionHistory.add_session(_drill_id, report)
+
+	var drill_title := _drill.title
+	_free_drill()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	hud.visible = false
-	dashboard.show_report(report)
+	dashboard.show_report(drill_title, report, advice, previous)
+	Sfx.play(&"success")
 
 
 func _show_menu() -> void:
-	if Telemetry.recording:
-		Telemetry.cancel_session()
+	_abort_session()
 	_set_state(State.MENU)
-	_clear_targets()
 	player.look_enabled = false
 	player.fire_enabled = false
+	player.move_enabled = false
+	player.reset_input()
 	player.reset_view()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	hud.visible = false
 	dashboard.visible = false
 	main_menu.visible = true
+
+
+## Abandonne la session en cours (télémétrie annulée, exercice libéré).
+func _abort_session() -> void:
+	if Telemetry.recording:
+		Telemetry.cancel_session()
+	_free_drill()
+
+
+func _free_drill() -> void:
+	if _drill != null:
+		_drill.queue_free()
+		_drill = null
 
 
 func _quit() -> void:
@@ -213,144 +271,37 @@ func _apply_frame_cap() -> void:
 
 
 # ---------------------------------------------------------------------------
-# Gridshot
+# Carte
 # ---------------------------------------------------------------------------
 
-func _cell_position(cell: Vector2i) -> Vector3:
-	var center := player.camera.global_position + Vector3(0.0, 0.0, -grid_distance)
-	var offset_x := (float(cell.x) - float(grid_columns - 1) * 0.5) * cell_spacing
-	var offset_y := (float(cell.y) - float(grid_rows - 1) * 0.5) * cell_spacing
-	return center + Vector3(offset_x, offset_y, 0.0)
-
-
-func _fill_grid() -> void:
-	while _occupied.size() < simultaneous_targets:
-		if not _spawn_target(Vector2i(-1, -1)):
-			break
-
-
-## Fait apparaître une cible dans une cellule libre tirée au hasard, différente
-## de `excluded` (la cellule qui vient d'être libérée).
-func _spawn_target(excluded: Vector2i) -> bool:
-	var free_cells: Array[Vector2i] = []
-	for column in grid_columns:
-		for row in grid_rows:
-			var candidate := Vector2i(column, row)
-			if candidate != excluded and not _occupied.has(candidate):
-				free_cells.append(candidate)
-	if free_cells.is_empty():
-		return false
-
-	var chosen: Vector2i = free_cells[_rng.randi_range(0, free_cells.size() - 1)]
-	var target := TARGET_SCENE.instantiate() as AimTarget
-	target.configure(_next_target_id, chosen, target_radius)
-	_next_target_id += 1
-	target.position = _cell_position(chosen)
-	targets_root.add_child(target)
-	_occupied[chosen] = target
-	return true
-
-
-func _clear_targets() -> void:
-	for value: Variant in _occupied.values():
-		var target := value as AimTarget
-		if is_instance_valid(target):
-			target.destroy()
-	_occupied.clear()
-
-
-## Cible vivante la plus proche du viseur (en angle), ou null.
-func _nearest_target() -> AimTarget:
-	var best: AimTarget = null
-	var best_angle := INF
-	for value: Variant in _occupied.values():
-		var candidate := value as AimTarget
-		if not is_instance_valid(candidate) or not candidate.alive:
-			continue
-		var offset: Vector2 = Telemetry.angular_offset_to(candidate.global_position)
-		var angle := offset.length()
-		if angle < best_angle:
-			best_angle = angle
-			best = candidate
-	return best
+## Remplace la carte courante par celle de `path` (sans effet si elle est déjà chargée).
+func _load_map(path: String) -> void:
+	if path == _map_path and is_instance_valid(_map):
+		return
+	var packed := load(path) as PackedScene
+	if packed == null:
+		push_error("KINETIC // AIM : carte introuvable : %s" % path)
+		return
+	if is_instance_valid(_map):
+		remove_child(_map)
+		_map.queue_free()
+	_map = packed.instantiate() as Node3D
+	_map.name = "Arena"
+	add_child(_map)
+	move_child(_map, 0)
+	_map_path = path
+	_apply_graphics()
 
 
 # ---------------------------------------------------------------------------
 # Tirs
 # ---------------------------------------------------------------------------
 
-func _on_player_fired(collider: Object, hit_position: Vector3, hit_normal: Vector3, muzzle_position: Vector3) -> void:
-	_spawn_tracer(muzzle_position, hit_position)
-	if state != State.PLAYING:
-		return
-	shots += 1
-	var target := collider as AimTarget
-	if target != null and target.alive:
-		_register_hit(target)
-	else:
-		_register_miss(collider != null, hit_position, hit_normal)
-	hud.set_score(score)
-	hud.set_accuracy(hits, shots)
-
-
-func _register_hit(target: AimTarget) -> void:
-	var now := Time.get_ticks_usec()
-	var since_last_hit := float(now - _last_hit_usec) / 1000000.0
-	_last_hit_usec = now
-	hits += 1
-	# Bonus de vitesse : complet sous 150 ms entre deux cibles, nul au-delà de 800 ms.
-	var speed_factor := clampf(1.0 - (since_last_hit - 0.15) / 0.65, 0.0, 1.0)
-	score += hit_points + roundi(float(speed_bonus_points) * speed_factor)
-
-	var target_position := target.global_position
-	Telemetry.record_shot(true, target_position, target.radius, target.target_id)
-
-	var freed_cell := target.grid_cell
-	_occupied.erase(freed_cell)
-	target.destroy()
-	_spawn_effect(EXPLOSION_SCENE, target_position, Vector3.ZERO)
-	_spawn_target(freed_cell)
-	hud.flash_hit()
-
-
-func _register_miss(hit_world: bool, hit_position: Vector3, hit_normal: Vector3) -> void:
-	score = maxi(score - miss_penalty, 0)
-	var nearest := _nearest_target()
-	if nearest != null:
-		Telemetry.record_shot(false, nearest.global_position, nearest.radius, nearest.target_id)
-	else:
-		Telemetry.record_shot(false, Vector3.ZERO, 0.0, -1)
-	if hit_world:
-		_spawn_effect(IMPACT_SCENE, hit_position, hit_normal)
-	hud.flash_miss()
-
-
-# ---------------------------------------------------------------------------
-# Effets
-# ---------------------------------------------------------------------------
-
-func _spawn_tracer(from: Vector3, to: Vector3) -> void:
-	var tracer := TRACER_SCENE.instantiate() as Tracer
-	effects_root.add_child(tracer)
-	tracer.fire(from, to)
-
-
-## Instancie un effet ponctuel. Si `normal` est non nul, l'effet est orienté
-## pour que son axe +Z local sorte de la surface touchée.
-func _spawn_effect(scene: PackedScene, at: Vector3, normal: Vector3) -> void:
-	var effect := scene.instantiate() as Node3D
-	if normal.length_squared() > 0.5:
-		var up := Vector3.UP if absf(normal.y) < 0.99 else Vector3.RIGHT
-		effect.transform = Transform3D(Basis.looking_at(-normal, up), at + normal * 0.03)
-	else:
-		effect.position = at
-	effects_root.add_child(effect)
-
-
-func _prewarm_effects() -> void:
-	_spawn_effect(EXPLOSION_SCENE, PREWARM_POSITION, Vector3.ZERO)
-	_spawn_effect(IMPACT_SCENE, PREWARM_POSITION, Vector3.BACK)
-	_spawn_tracer(PREWARM_POSITION, PREWARM_POSITION + Vector3(0.0, 0.0, -2.0))
+func _on_player_fired(collider: Object, hit_position: Vector3, hit_normal: Vector3, muzzle_position: Vector3, shot: Dictionary) -> void:
+	fx.tracer(muzzle_position, hit_position)
+	Sfx.play(&"shot")
+	if state == State.PLAYING and _drill != null:
+		_drill.on_shot(collider, hit_position, hit_normal, shot)
 
 
 # ---------------------------------------------------------------------------
@@ -359,13 +310,14 @@ func _prewarm_effects() -> void:
 
 func _apply_graphics() -> void:
 	var quality: int = GameSettings.quality
-	var world_environment := arena.get_node_or_null(^"WorldEnvironment") as WorldEnvironment
-	if world_environment != null and world_environment.environment != null:
-		var environment := world_environment.environment
-		environment.glow_enabled = true
-		environment.ssao_enabled = quality >= GameSettings.Quality.QUALITY
-		environment.ssr_enabled = quality >= GameSettings.Quality.ULTRA
-		environment.sdfgi_enabled = quality >= GameSettings.Quality.ULTRA
+	if is_instance_valid(_map):
+		var world_environment := _map.get_node_or_null(^"WorldEnvironment") as WorldEnvironment
+		if world_environment != null and world_environment.environment != null:
+			var environment := world_environment.environment
+			environment.glow_enabled = true
+			environment.ssao_enabled = quality >= GameSettings.Quality.QUALITY
+			environment.ssr_enabled = quality >= GameSettings.Quality.ULTRA
+			environment.sdfgi_enabled = quality >= GameSettings.Quality.ULTRA
 
 	var viewport := get_viewport()
 	if quality == GameSettings.Quality.PERFORMANCE:

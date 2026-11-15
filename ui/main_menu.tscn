@@ -36,9 +36,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/margin_left = 72
-theme_override_constants/margin_top = 56
+theme_override_constants/margin_top = 40
 theme_override_constants/margin_right = 72
-theme_override_constants/margin_bottom = 56
+theme_override_constants/margin_bottom = 40
 
 [node name="Columns" type="HBoxContainer" parent="Margin"]
 layout_mode = 2
@@ -47,7 +47,7 @@ theme_override_constants/separation = 56
 [node name="Left" type="VBoxContainer" parent="Margin/Columns"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 14
+theme_override_constants/separation = 12
 alignment = 1
 
 [node name="Title" type="Label" parent="Margin/Columns/Left"]
@@ -58,34 +58,55 @@ text = "KINETIC // AIM"
 [node name="Tagline" type="Label" parent="Margin/Columns/Left"]
 layout_mode = 2
 theme_type_variation = &"HeadingLabel"
-text = "AIM TRAINER HAUTE PRÉCISION · TÉLÉMÉTRIE 1000 HZ"
+text = "ENTRAÎNEMENT FPS TACTIQUE · TÉLÉMÉTRIE 1000 HZ · COACH"
 
 [node name="Gap" type="Control" parent="Margin/Columns/Left"]
-custom_minimum_size = Vector2(0, 28)
+custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
+
+[node name="DrillCaption" type="Label" parent="Margin/Columns/Left"]
+layout_mode = 2
+theme_type_variation = &"SectionLabel"
+text = "EXERCICES"
+
+[node name="DrillGrid" type="GridContainer" parent="Margin/Columns/Left"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 8
+columns = 2
 
 [node name="ModePanel" type="PanelContainer" parent="Margin/Columns/Left"]
 layout_mode = 2
 
 [node name="ModeBox" type="VBoxContainer" parent="Margin/Columns/Left/ModePanel"]
 layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="ModeCaption" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
-layout_mode = 2
-theme_type_variation = &"SectionLabel"
-text = "MODE DE JEU"
+theme_override_constants/separation = 8
 
 [node name="ModeName" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
+unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"ValueLabel"
-text = "GRIDSHOT · 60 s"
+text = "EXERCICE"
+
+[node name="ModeFocus" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0, 0.9, 1, 1)
+text = "Compétence travaillée"
 
 [node name="ModeDescription" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
-custom_minimum_size = Vector2(420, 0)
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 96)
 layout_mode = 2
-text = "Trois sphères lumineuses apparaissent sur une grille face à vous. Détruisez-en une : une autre surgit aussitôt ailleurs. Enchaînez les flicks le plus vite et le plus proprement possible ; chaque mouvement est enregistré puis analysé à la fin de la session."
+text = "Description"
 autowrap_mode = 3
+
+[node name="ModeStats" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"CaptionLabel"
+text = "Aucune session enregistrée"
 
 [node name="PlayButton" type="Button" parent="Margin/Columns/Left/ModePanel/ModeBox"]
 unique_name_in_owner = true
@@ -95,9 +116,11 @@ theme_type_variation = &"AccentButton"
 text = "LANCER LA SESSION"
 
 [node name="Controls" type="Label" parent="Margin/Columns/Left"]
+custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
 theme_type_variation = &"HintLabel"
-text = "Clic gauche : tirer   ·   Échap : retour au menu   ·   F11 : plein écran"
+text = "ZQSD (WASD en QWERTY) : se déplacer · Maj : marcher · Clic gauche : tirer · Espace : valider · Échap : menu · F11 : plein écran"
+autowrap_mode = 3
 
 [node name="QuitButton" type="Button" parent="Margin/Columns/Left"]
 unique_name_in_owner = true

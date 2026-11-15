@@ -1,0 +1,9 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[ext_resource type="ShaderMaterial" path="res://materials/grid_wall.tres" id="1_grid"]
+
+[resource]
+next_pass = ExtResource("1_grid")
+albedo_color = Color(0.52, 0.36, 0.22, 1)
+metallic = 0.1
+roughness = 0.7

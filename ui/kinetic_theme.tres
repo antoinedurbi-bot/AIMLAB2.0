@@ -33,6 +33,61 @@ corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 4
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_coach"]
+content_margin_left = 24.0
+content_margin_top = 14.0
+content_margin_right = 24.0
+content_margin_bottom = 14.0
+bg_color = Color(0.09, 0.05, 0.11, 0.92)
+border_width_left = 4
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.25, 0.78, 0.85)
+corner_radius_top_left = 6
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_drill"]
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+bg_color = Color(0.06, 0.085, 0.12, 0.92)
+border_width_left = 3
+border_color = Color(0, 0.85, 1, 0.3)
+corner_radius_top_left = 4
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_drill_hover"]
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+bg_color = Color(0.05, 0.18, 0.24, 0.96)
+border_width_left = 3
+border_color = Color(0, 0.9, 1, 0.9)
+corner_radius_top_left = 4
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_drill_selected"]
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+bg_color = Color(0, 0.5, 0.62, 1)
+border_width_left = 3
+border_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 4
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hud"]
 content_margin_left = 22.0
 content_margin_top = 8.0
@@ -191,6 +246,20 @@ CaptionLabel/colors/font_color = Color(0.52, 0.63, 0.74, 1)
 CaptionLabel/font_sizes/font_size = 14
 CardPanel/base_type = &"PanelContainer"
 CardPanel/styles/panel = SubResource("StyleBoxFlat_card")
+CoachPanel/base_type = &"PanelContainer"
+CoachPanel/styles/panel = SubResource("StyleBoxFlat_coach")
+DrillButton/base_type = &"Button"
+DrillButton/colors/font_color = Color(0.85, 0.93, 1, 1)
+DrillButton/colors/font_focus_color = Color(1, 1, 1, 1)
+DrillButton/colors/font_hover_color = Color(1, 1, 1, 1)
+DrillButton/colors/font_hover_pressed_color = Color(1, 1, 1, 1)
+DrillButton/colors/font_pressed_color = Color(1, 1, 1, 1)
+DrillButton/font_sizes/font_size = 17
+DrillButton/styles/focus = SubResource("StyleBoxFlat_drill_hover")
+DrillButton/styles/hover = SubResource("StyleBoxFlat_drill_hover")
+DrillButton/styles/hover_pressed = SubResource("StyleBoxFlat_drill_selected")
+DrillButton/styles/normal = SubResource("StyleBoxFlat_drill")
+DrillButton/styles/pressed = SubResource("StyleBoxFlat_drill_selected")
 HeadingLabel/base_type = &"Label"
 HeadingLabel/colors/font_color = Color(0, 0.9, 1, 1)
 HeadingLabel/font_sizes/font_size = 22

@@ -2,8 +2,10 @@ extends Node
 ## Autoload « Telemetry » : capture haute fréquence et analyse biomécanique.
 ##
 ## Capture — à chaque tick physique (1000 Hz, cf. project.godot) on échantillonne
-## le yaw/pitch de la caméra et sa vitesse angulaire. Chaque tir est horodaté
-## avec l'écart angulaire entre le viseur et la cible visée.
+## le yaw/pitch de la caméra, sa vitesse angulaire, la position et la vitesse du
+## joueur et l'état des touches. Chaque tir est horodaté avec l'écart angulaire
+## entre le viseur et la cible visée ; les exercices ajoutent leurs propres
+## événements (touches, apparitions, expositions...) via `log_event`.
 ##
 ## Analyse — à la fin de la session, le signal est dérivé (vitesse puis
 ## accélération angulaire) et découpé en « flicks » (trajet entre deux tirs) :
@@ -36,6 +38,13 @@ const MOVING_SPEED := 8.0
 ## sqrt(12 / 17,14) : score brut d'un profil minimum-jerk parfait, utilisé pour
 ## ramener l'indice de fluidité sur une échelle 0–100.
 const MIN_JERK_REFERENCE := 0.8367
+## Vitesse de déplacement (m/s) au-delà de laquelle un tir est compté « en mouvement »
+## (même seuil que PlayerController.ACCURATE_SPEED).
+const ACCURATE_MOVE_SPEED := 1.5
+
+const EXPORT_DIR := "user://telemetry"
+## Nombre de fichiers conservés dans EXPORT_DIR (deux par session).
+const MAX_EXPORT_FILES := 40
 
 
 class ShotRecord:
@@ -51,11 +60,18 @@ class ShotRecord:
 	## Rayon apparent de la cible, en degrés.
 	var angular_radius: float = 0.0
 	var target_id: int = -1
+	## Vitesse de déplacement du joueur au moment du tir (m/s).
+	var player_speed: float = 0.0
+	## Données propres à l'exercice (méthode d'arrêt, temps de réaction...).
+	var extra: Dictionary = {}
 
 
 var recording: bool = false
+## Masque des touches de déplacement, tenu à jour par le joueur.
+var input_mask: int = 0
 
 var _camera: Camera3D
+var _body: CharacterBody3D
 var _mode_name: String = ""
 var _duration: float = 60.0
 var _tick_rate: float = 1000.0
@@ -72,7 +88,13 @@ var _raw_speed: PackedFloat32Array = PackedFloat32Array()
 var _yaw_unwrapped: float = 0.0
 var _last_yaw_wrapped: float = 0.0
 var _last_pitch: float = 0.0
+## Position (m), vitesse de déplacement (m/s) et touches du joueur, par tick.
+var _pos_x: PackedFloat32Array = PackedFloat32Array()
+var _pos_z: PackedFloat32Array = PackedFloat32Array()
+var _move_speed: PackedFloat32Array = PackedFloat32Array()
+var _keys: PackedByteArray = PackedByteArray()
 var _shots: Array[ShotRecord] = []
+var _events: Array[Dictionary] = []
 
 
 func _ready() -> void:
@@ -85,8 +107,10 @@ func _ready() -> void:
 # API de capture
 # ---------------------------------------------------------------------------
 
-func begin_session(mode_name: String, duration: float, camera: Camera3D) -> void:
+## `body` est optionnel : s'il est fourni, sa position et sa vitesse sont échantillonnées.
+func begin_session(mode_name: String, duration: float, camera: Camera3D, body: CharacterBody3D = null) -> void:
 	_camera = camera
+	_body = body
 	_mode_name = mode_name
 	_duration = duration
 	_tick_rate = float(Engine.physics_ticks_per_second)
@@ -96,9 +120,14 @@ func begin_session(mode_name: String, duration: float, camera: Camera3D) -> void
 	_yaw.resize(capacity)
 	_pitch.resize(capacity)
 	_raw_speed.resize(capacity)
+	_pos_x.resize(capacity)
+	_pos_z.resize(capacity)
+	_move_speed.resize(capacity)
+	_keys.resize(capacity)
 	_count = 0
 	_frames = 0
 	_shots.clear()
+	_events.clear()
 
 	var angles := _camera_angles()
 	_yaw_unwrapped = angles.x
@@ -131,14 +160,16 @@ func cancel_session() -> void:
 ## Enregistre un tir. `target_position` / `target_radius` décrivent la cible
 ## touchée, ou la cible la plus proche du viseur en cas de tir raté
 ## (`target_radius` <= 0 s'il n'y avait aucune cible).
-func record_shot(hit: bool, target_position: Vector3, target_radius: float, target_id: int = -1) -> void:
+func record_shot(hit: bool, target_position: Vector3, target_radius: float, target_id: int = -1, player_speed: float = 0.0, extra: Dictionary = {}) -> void:
 	if not recording or not is_instance_valid(_camera):
 		return
 	var shot := ShotRecord.new()
 	shot.tick = _count
-	shot.time = float(Time.get_ticks_usec() - _start_usec) / 1000000.0
+	shot.time = elapsed_seconds()
 	shot.hit = hit
 	shot.target_id = target_id
+	shot.player_speed = player_speed
+	shot.extra = extra
 	if target_radius > 0.0:
 		shot.has_target = true
 		shot.offset = -angular_offset_to(target_position)
@@ -156,6 +187,23 @@ func angular_offset_to(world_position: Vector3) -> Vector2:
 	var azimuth := atan2(local.x, -local.z)
 	var elevation := atan2(local.y, sqrt(local.x * local.x + local.z * local.z))
 	return Vector2(rad_to_deg(azimuth), rad_to_deg(elevation))
+
+
+## Ajoute un événement horodaté au journal de la session (touche, apparition
+## de cible, exposition...). L'entrée enregistrée reprend `data` avec `kind`, `t` et `tick`.
+func log_event(kind: String, data: Dictionary = {}) -> void:
+	if not recording:
+		return
+	var entry := data.duplicate()
+	entry["kind"] = kind
+	entry["t"] = elapsed_seconds()
+	entry["tick"] = _count
+	_events.append(entry)
+
+
+## Secondes écoulées depuis le début de la session.
+func elapsed_seconds() -> float:
+	return float(Time.get_ticks_usec() - _start_usec) / 1000000.0
 
 
 func sample_count() -> int:
@@ -181,11 +229,26 @@ func _physics_process(_delta: float) -> void:
 		_yaw.resize(grown)
 		_pitch.resize(grown)
 		_raw_speed.resize(grown)
+		_pos_x.resize(grown)
+		_pos_z.resize(grown)
+		_move_speed.resize(grown)
+		_keys.resize(grown)
 
 	var horizontal := d_yaw * cos(deg_to_rad(angles.y))
 	_yaw[_count] = _yaw_unwrapped
 	_pitch[_count] = angles.y
 	_raw_speed[_count] = sqrt(horizontal * horizontal + d_pitch * d_pitch) * _tick_rate
+	if is_instance_valid(_body):
+		var body_position := _body.global_position
+		var body_velocity := _body.velocity
+		_pos_x[_count] = body_position.x
+		_pos_z[_count] = body_position.z
+		_move_speed[_count] = Vector2(body_velocity.x, body_velocity.z).length()
+	else:
+		_pos_x[_count] = 0.0
+		_pos_z[_count] = 0.0
+		_move_speed[_count] = 0.0
+	_keys[_count] = input_mask
 	_count += 1
 
 
@@ -286,9 +349,54 @@ func _build_report(score: int) -> Dictionary:
 		"sample_count": _count,
 		"sample_rate_hz": _tick_rate,
 		"input_rate_hz": float(_frames) / elapsed if elapsed > 0.0 else 0.0,
+		"event_count": _events.size(),
 	}
+	_add_activity_stats(report, elapsed)
 	_analyse_kinematics(report)
 	return report
+
+
+## Statistiques d'activité générales : trajet du viseur, déplacement, cadence de tir.
+func _add_activity_stats(report: Dictionary, elapsed: float) -> void:
+	var aim_path := 0.0
+	var aim_idle := 0
+	var distance_moved := 0.0
+	var moving_samples := 0
+	var move_speed_sum := 0.0
+	for i in _count:
+		aim_path += _raw_speed[i] * _dt
+		if _raw_speed[i] < MOVING_SPEED:
+			aim_idle += 1
+		var move_speed := _move_speed[i]
+		distance_moved += move_speed * _dt
+		if move_speed > 0.5:
+			moving_samples += 1
+			move_speed_sum += move_speed
+
+	var samples := float(maxi(_count, 1))
+	report["aim_path_deg"] = aim_path
+	report["avg_angular_speed"] = aim_path / elapsed if elapsed > 0.0 else 0.0
+	report["aim_idle_ratio"] = 100.0 * float(aim_idle) / samples
+	# Distance parcourue par la souris sur le tapis, d'après la sensibilité cm/360°.
+	report["mouse_distance_cm"] = aim_path / 360.0 * GameSettings.cm_per_360
+	report["distance_moved_m"] = distance_moved
+	report["moving_time_ratio"] = 100.0 * float(moving_samples) / samples
+	report["avg_move_speed"] = move_speed_sum / float(moving_samples) if moving_samples > 0 else 0.0
+
+	var shot_count := _shots.size()
+	var shots_moving := 0
+	var shot_speed_sum := 0.0
+	for shot in _shots:
+		shot_speed_sum += shot.player_speed
+		if shot.player_speed > ACCURATE_MOVE_SPEED:
+			shots_moving += 1
+	report["shots_moving"] = shots_moving
+	report["avg_speed_at_shot"] = shot_speed_sum / float(shot_count) if shot_count > 0 else 0.0
+	report["first_shot_time_s"] = _shots[0].time if shot_count > 0 else 0.0
+	if shot_count > 1:
+		report["avg_shot_interval_ms"] = 1000.0 * (_shots[shot_count - 1].time - _shots[0].time) / float(shot_count - 1)
+	else:
+		report["avg_shot_interval_ms"] = 0.0
 
 
 func _analyse_kinematics(report: Dictionary) -> void:
@@ -493,3 +601,111 @@ static func _box_smooth(source: PackedFloat32Array, half: int) -> PackedFloat32A
 		var b := mini(i + half, n - 1)
 		result[i] = (prefix[b + 1] - prefix[a]) / float(b - a + 1)
 	return result
+
+
+# ---------------------------------------------------------------------------
+# Export de la télémétrie brute
+# ---------------------------------------------------------------------------
+
+## Écrit la dernière session dans EXPORT_DIR : un CSV (un échantillon par tick)
+## et un JSON (rapport, tirs, événements). Renvoie le chemin du CSV, ou "" en cas d'échec.
+func export_raw(file_stem: String, report: Dictionary) -> String:
+	if _count <= 0:
+		return ""
+	if DirAccess.make_dir_recursive_absolute(EXPORT_DIR) != OK:
+		push_warning("KINETIC // AIM : impossible de créer %s." % EXPORT_DIR)
+		return ""
+
+	var csv_path := "%s/%s.csv" % [EXPORT_DIR, file_stem]
+	var csv := FileAccess.open(csv_path, FileAccess.WRITE)
+	if csv == null:
+		push_warning("KINETIC // AIM : impossible d'écrire %s." % csv_path)
+		return ""
+	csv.store_line("tick,time_s,yaw_deg,pitch_deg,angular_speed_dps,pos_x_m,pos_z_m,move_speed_mps,keys")
+	for i in _count:
+		csv.store_line("%d,%.3f,%.4f,%.4f,%.2f,%.3f,%.3f,%.3f,%d" % [
+			i, float(i) * _dt, _yaw[i], _pitch[i], _raw_speed[i], _pos_x[i], _pos_z[i], _move_speed[i], _keys[i]])
+	csv.close()
+
+	var shots: Array = []
+	for shot in _shots:
+		shots.append({
+			"tick": shot.tick,
+			"t": shot.time,
+			"hit": shot.hit,
+			"target_id": shot.target_id,
+			"offset_deg": [shot.offset.x, shot.offset.y],
+			"target_angular_radius_deg": shot.angular_radius,
+			"player_speed": shot.player_speed,
+			"extra": _json_safe(shot.extra),
+		})
+	var payload := {
+		"report": _json_safe(report),
+		"shots": shots,
+		"events": _json_safe(_events),
+	}
+	var json := FileAccess.open("%s/%s.json" % [EXPORT_DIR, file_stem], FileAccess.WRITE)
+	if json != null:
+		json.store_string(JSON.stringify(payload, "\t"))
+		json.close()
+
+	_prune_exports()
+	return csv_path
+
+
+## Supprime les exports les plus anciens au-delà de MAX_EXPORT_FILES
+## (les noms commencent par la date : l'ordre alphabétique est chronologique).
+func _prune_exports() -> void:
+	var files := DirAccess.get_files_at(EXPORT_DIR)
+	if files.size() <= MAX_EXPORT_FILES:
+		return
+	files.sort()
+	for i in files.size() - MAX_EXPORT_FILES:
+		DirAccess.remove_absolute("%s/%s" % [EXPORT_DIR, files[i]])
+
+
+## Convertit une valeur en structure sérialisable en JSON (vecteurs et tableaux
+## compacts deviennent des listes, les nombres non finis deviennent null).
+static func _json_safe(value: Variant) -> Variant:
+	if value is Dictionary:
+		var source: Dictionary = value
+		var converted := {}
+		for key: Variant in source:
+			converted[str(key)] = _json_safe(source[key])
+		return converted
+	if value is Array:
+		var items: Array = value
+		var list: Array = []
+		for item: Variant in items:
+			list.append(_json_safe(item))
+		return list
+	if value is Vector2:
+		var v2: Vector2 = value
+		return [v2.x, v2.y]
+	if value is Vector3:
+		var v3: Vector3 = value
+		return [v3.x, v3.y, v3.z]
+	if value is PackedVector2Array:
+		var points: PackedVector2Array = value
+		var pairs: Array = []
+		for point in points:
+			pairs.append([point.x, point.y])
+		return pairs
+	if value is PackedFloat32Array:
+		var floats32: PackedFloat32Array = value
+		return Array(floats32)
+	if value is PackedFloat64Array:
+		var floats64: PackedFloat64Array = value
+		return Array(floats64)
+	if value is PackedStringArray:
+		var strings: PackedStringArray = value
+		return Array(strings)
+	if value is float:
+		var number: float = value
+		if is_nan(number) or is_inf(number):
+			return null
+		return number
+	if value is StringName:
+		return str(value)
+	return value
+

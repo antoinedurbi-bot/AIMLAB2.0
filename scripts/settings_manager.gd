@@ -9,6 +9,7 @@ extends Node
 signal sensitivity_changed
 signal crosshair_changed
 signal graphics_changed
+signal audio_changed
 
 enum CrosshairStyle { CROSS, CROSS_DOT, DOT, CIRCLE }
 enum Quality { PERFORMANCE, QUALITY, ULTRA }
@@ -50,6 +51,13 @@ var vsync: bool = false
 var fullscreen: bool = false
 ## 0 = illimité (recommandé : la télémétrie gagne en résolution temporelle).
 var max_fps: int = 0
+
+# --- Audio et données ---
+var sfx_volume: float = 0.6
+## Écrit la télémétrie brute (CSV + JSON) de chaque session dans user://telemetry.
+var export_raw_telemetry: bool = true
+## Identifiant du dernier exercice lancé (présélectionné dans le menu).
+var last_drill: String = "gridshot"
 
 
 func _ready() -> void:
@@ -112,6 +120,11 @@ func commit_graphics() -> void:
 	save_settings()
 
 
+func commit_audio() -> void:
+	audio_changed.emit()
+	save_settings()
+
+
 # ---------------------------------------------------------------------------
 # Persistance
 # ---------------------------------------------------------------------------
@@ -134,6 +147,9 @@ func save_settings() -> void:
 	cfg.set_value("graphics", "vsync", vsync)
 	cfg.set_value("graphics", "fullscreen", fullscreen)
 	cfg.set_value("graphics", "max_fps", max_fps)
+	cfg.set_value("audio", "sfx_volume", sfx_volume)
+	cfg.set_value("data", "export_raw_telemetry", export_raw_telemetry)
+	cfg.set_value("data", "last_drill", last_drill)
 	var error := cfg.save(SAVE_PATH)
 	if error != OK:
 		push_warning("KINETIC // AIM : impossible d'enregistrer %s (erreur %d)." % [SAVE_PATH, error])
@@ -161,6 +177,11 @@ func load_settings() -> void:
 	vsync = _read_bool(cfg, "graphics", "vsync", vsync)
 	fullscreen = _read_bool(cfg, "graphics", "fullscreen", fullscreen)
 	max_fps = clampi(_read_int(cfg, "graphics", "max_fps", max_fps), 0, 2000)
+	sfx_volume = clampf(_read_float(cfg, "audio", "sfx_volume", sfx_volume), 0.0, 1.0)
+	export_raw_telemetry = _read_bool(cfg, "data", "export_raw_telemetry", export_raw_telemetry)
+	var stored_drill: Variant = cfg.get_value("data", "last_drill", last_drill)
+	if stored_drill is String:
+		last_drill = stored_drill
 
 
 func _read_float(cfg: ConfigFile, section: String, key: String, fallback: float) -> float:

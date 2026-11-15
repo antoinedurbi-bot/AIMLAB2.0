@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="KINETIC // AIM"
-config/description="Aim trainer haute précision : Gridshot, télémétrie 1000 Hz et analyse biomécanique des flicks."
-config/version="0.1.0"
+config/description="Entraînement pour FPS tactiques : exercices de visée et de déplacement, télémétrie 1000 Hz et conseils personnalisés."
+config/version="0.2.0"
 run/main_scene="res://scenes/main.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="KineticAim"
@@ -25,6 +25,8 @@ config/icon="res://icon.svg"
 
 GameSettings="*res://scripts/settings_manager.gd"
 Telemetry="*res://scripts/telemetry_manager.gd"
+SessionHistory="*res://scripts/session_history.gd"
+Sfx="*res://scripts/sfx.gd"
 
 [display]
 
@@ -43,6 +45,7 @@ theme/custom="res://ui/kinetic_theme.tres"
 
 3d_physics/layer_1="world"
 3d_physics/layer_2="targets"
+3d_physics/layer_3="player"
 
 [physics]
 

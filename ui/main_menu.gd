@@ -1,10 +1,13 @@
 extends Control
-## Menu principal : lancement de la session et réglages (sensibilité, réticule,
-## graphismes). Les lignes de réglages sont construites par code dans
-## `SettingsList` pour garder la scène lisible.
+## Menu principal : choix de l'exercice, lancement de la session et réglages
+## (sensibilité, réticule, graphismes, son et données). La liste des exercices
+## et les lignes de réglages sont construites par code pour garder la scène lisible.
 
-signal play_requested
+## Émis avec l'identifiant de l'exercice choisi.
+signal play_requested(drill_id: String)
 signal quit_requested
+
+const DrillCatalog := preload("res://scripts/drills/drill_catalog.gd")
 
 const CROSSHAIR_STYLES := ["Croix", "Croix + point", "Point", "Cercle + point"]
 const QUALITY_LEVELS := ["Performance", "Qualité (SSAO, MSAA 4x)", "Ultra (+ SDFGI, SSR)"]
@@ -17,25 +20,35 @@ var _cm_spin: SpinBox
 var _game_option: OptionButton
 var _game_sens_spin: SpinBox
 var _sens_summary: Label
+var _selected_drill: String = "gridshot"
 
 @onready var _play_button: Button = %PlayButton
 @onready var _quit_button: Button = %QuitButton
 @onready var _settings_list: VBoxContainer = %SettingsList
+@onready var _drill_grid: GridContainer = %DrillGrid
+@onready var _mode_name: Label = %ModeName
+@onready var _mode_focus: Label = %ModeFocus
+@onready var _mode_description: Label = %ModeDescription
+@onready var _mode_stats: Label = %ModeStats
 
 
 func _ready() -> void:
 	_play_button.pressed.connect(_on_play_pressed)
 	_quit_button.pressed.connect(_on_quit_pressed)
 	visibility_changed.connect(_on_visibility_changed)
+	_build_drill_list()
 	_build_sensitivity_section()
 	_build_crosshair_section()
 	_build_graphics_section()
+	_build_audio_section()
 	_refresh_sensitivity_fields()
 	_on_visibility_changed()
 
 
 func _on_play_pressed() -> void:
-	play_requested.emit()
+	GameSettings.last_drill = _selected_drill
+	GameSettings.save_settings()
+	play_requested.emit(_selected_drill)
 
 
 func _on_quit_pressed() -> void:
@@ -44,7 +57,55 @@ func _on_quit_pressed() -> void:
 
 func _on_visibility_changed() -> void:
 	if is_visible_in_tree():
+		_refresh_drill_stats()
 		_play_button.grab_focus.call_deferred()
+
+
+# ---------------------------------------------------------------------------
+# Exercices
+# ---------------------------------------------------------------------------
+
+func _build_drill_list() -> void:
+	var known: Dictionary = DrillCatalog.find(GameSettings.last_drill)
+	_selected_drill = known.get("id", "gridshot")
+	var group := ButtonGroup.new()
+	for item: Variant in DrillCatalog.DRILLS:
+		var entry: Dictionary = item
+		var drill_id: String = entry.get("id", "")
+		var button := Button.new()
+		button.text = "%s   ·   %s" % [entry.get("title", ""), entry.get("tag", "")]
+		button.theme_type_variation = &"DrillButton"
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.toggle_mode = true
+		button.button_group = group
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.set_pressed_no_signal(drill_id == _selected_drill)
+		button.pressed.connect(_on_drill_pressed.bind(drill_id))
+		_drill_grid.add_child(button)
+	_show_drill(_selected_drill)
+
+
+func _on_drill_pressed(drill_id: String) -> void:
+	_show_drill(drill_id)
+
+
+func _show_drill(drill_id: String) -> void:
+	var entry: Dictionary = DrillCatalog.find(drill_id)
+	_selected_drill = entry.get("id", "gridshot")
+	var duration: float = entry.get("duration", 60.0)
+	_mode_name.text = "%s · %d s max" % [entry.get("title", ""), roundi(duration)]
+	_mode_focus.text = entry.get("focus", "")
+	_mode_description.text = entry.get("description", "")
+	_refresh_drill_stats()
+
+
+func _refresh_drill_stats() -> void:
+	var sessions: int = SessionHistory.session_count(_selected_drill)
+	if sessions <= 0:
+		_mode_stats.text = "Aucune session enregistrée pour cet exercice"
+	else:
+		var best: int = SessionHistory.best_score(_selected_drill)
+		_mode_stats.text = "%d sessions enregistrées · record : %d points" % [sessions, best]
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +324,35 @@ func _on_fullscreen_toggled(enabled: bool) -> void:
 
 func _commit_graphics() -> void:
 	GameSettings.commit_graphics()
+
+
+# ---------------------------------------------------------------------------
+# Son et données
+# ---------------------------------------------------------------------------
+
+func _build_audio_section() -> void:
+	_add_section("SON ET DONNÉES")
+
+	var volume_spin := _make_spin(0.0, 100.0, 5.0, GameSettings.sfx_volume * 100.0, " %")
+	volume_spin.value_changed.connect(_on_volume_changed)
+	_add_row("Volume des effets", volume_spin)
+
+	var export_check := CheckBox.new()
+	export_check.text = "CSV + JSON dans user://telemetry"
+	export_check.button_pressed = GameSettings.export_raw_telemetry
+	export_check.toggled.connect(_on_export_toggled)
+	_add_row("Export de la télémétrie brute", export_check)
+
+
+func _on_volume_changed(value: float) -> void:
+	GameSettings.sfx_volume = value / 100.0
+	GameSettings.commit_audio()
+	Sfx.play(&"hit")
+
+
+func _on_export_toggled(enabled: bool) -> void:
+	GameSettings.export_raw_telemetry = enabled
+	GameSettings.save_settings()
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,9 @@
 # KINETIC // AIM
 
-Aim trainer haute précision pour Godot 4 (renderer Forward+) : visée 1:1 sur l'entrée brute de la
-souris, mode **Gridshot**, rendu PBR avec glow/SSAO, et un moteur de télémétrie qui échantillonne
-la visée à 1000 Hz pour analyser chaque flick à la fin de la session.
+Entraînement pour FPS tactiques, sous Godot 4 (renderer Forward+). Sept exercices ciblent les
+gestes qui comptent dans un jeu comme Valorant : flicks, micro-ajustements, tenue d'angle,
+contre-strafe, jiggle peek, placement du viseur et décompte de la charge. Chaque session est
+enregistrée à 1000 Hz, analysée, comparée aux précédentes, et se termine par un conseil.
 
 ## Lancer le projet
 
@@ -29,39 +30,117 @@ godot --path .
 | --- | --- |
 | Viser | Souris (capturée pendant la session) |
 | Tirer | Clic gauche |
+| Se déplacer | ZQSD sur AZERTY, WASD sur QWERTY (touches physiques) |
+| Marcher | Maj |
+| Valider (chrono de la charge) | Espace |
 | Abandonner la session / revenir au menu | Échap |
 | Plein écran | F11 |
-| Lancer / rejouer | Entrée ou clic sur le bouton |
 
-Une session dure 60 secondes après un compte à rebours de 3 secondes. Perdre le focus de la
-fenêtre pendant une session l'annule (les statistiques seraient faussées).
+Perdre le focus de la fenêtre pendant une session l'annule (les statistiques seraient faussées).
 
-## Structure
+## Exercices
 
-```
-project.godot                 Configuration (Forward+, physique 1000 Hz, autoloads, thème)
-scenes/
-  main.tscn                   Scène principale : arène + joueur + UI + gestionnaire de partie
-  arena.tscn                  Environnement 3D : structure PBR, néons, éclairage, WorldEnvironment
-  player.tscn                 Contrôleur FPS : Camera3D, RayCast3D de tir, point de bouche
-  target.tscn                 Cible sphérique (StaticBody3D, couche « targets »)
-  effects/                    Explosion de cible, impact de tir raté, traceur
-scripts/
-  game_manager.gd             États de jeu, Gridshot, score, effets
-  player.gd                   Visée brute (counts → degrés), tir
-  target.gd                   Cible : hitbox, apparition, destruction
-  telemetry_manager.gd        Autoload « Telemetry » : capture 1000 Hz + analyse
-  settings_manager.gd         Autoload « GameSettings » : sensibilité, réticule, graphismes
-  one_shot_effect.gd, tracer.gd
-ui/
-  hud.tscn                    Réticule, score, chrono, précision, compte à rebours
-  stats_dashboard.tscn        Rapport de fin de session
-  main_menu.tscn              Menu + réglages
-  crosshair.gd, heatmap.gd, flick_bar.gd, kinetic_theme.tres
-materials/                    StandardMaterial3D (PBR) + matériaux de grille néon
-shaders/                      Grille néon procédurale, onde de choc
-environment/                  Environment : ciel procédural, glow, SSAO, SDFGI/SSR (Ultra)
-```
+| Exercice | Ce qu'il travaille | Carte | Mesures principales |
+| --- | --- | --- | --- |
+| **Gridshot** | Flicks larges, vitesse d'enchaînement | Stand de tir | Précision, temps entre cibles, over/underflick, fluidité |
+| **Microflicks** | Micro-ajustements sur cibles de la taille d'une tête | Stand de tir | Idem, sur de petites amplitudes |
+| **Tenue d'angle** | Réaction, premier tir, placement du viseur | Hall d'angles | Réaction médiane, premier tir, tirs prématurés, avance du viseur, tirs derrière/devant |
+| **Strafe / contre-strafe** | S'arrêter net avant de tirer | Couloir de strafe | Vitesse au tir, temps d'arrêt, méthode d'arrêt, délai entre touches, trop tôt / trop tard |
+| **Jiggle peek** | Prendre une information sans se faire toucher | Hall d'angles | Durée d'exposition, sorties sans information, dépassement, régularité |
+| **Pré-visée** | Placement du viseur en nettoyant des angles | Parcours | Erreur de pré-visée (verticale et horizontale), temps pour abattre, tirs en mouvement |
+| **Chrono de la charge** | Compter de tête depuis la pose | Stand de tir | Erreur par manche, biais, rythme interne, effet de la pression |
+
+Chaque exercice est un script dans `scripts/drills/` qui étend `drill_base.gd`, inscrit dans
+`scripts/drills/drill_catalog.gd` (titre, description, carte, durée, paramètres). En ajouter un
+revient à écrire un script et une entrée de catalogue.
+
+### Déplacement et précision
+
+Le joueur se déplace selon un modèle friction + accélération proche d'un FPS tactique : 5,4 m/s
+en course, 2,9 m/s en marche, pleine vitesse atteinte en moins de 0,2 s. Un tir n'est précis
+que sous **1,5 m/s** ; au-dessus, il est dévié d'autant plus que la vitesse est grande. Deux
+façons de s'arrêter, mesurées séparément :
+
+- relâcher la touche : précis au bout d'environ 120 ms ;
+- contre-strafe (tape sur la touche opposée) : précis au bout d'environ 40 ms, à condition de
+  relâcher la touche opposée avant de repartir dans l'autre sens.
+
+Ces valeurs sont une approximation, pas la copie d'un jeu : elles se règlent en tête de
+`scripts/player.gd`.
+
+### Chrono de la charge
+
+Quatre manches : 10 s et 20 s au calme, puis 20 s et 38 s en abattant des cibles. Au bip, la
+charge est posée ; il faut appuyer sur Espace à l'instant demandé, sans chronomètre. 38 s est le
+dernier instant pour lancer un désamorçage de 7 s sur une charge de 45 s. Les durées se changent
+dans `charge_timer_drill.gd` (`rep_seconds`, `rep_distraction`).
+
+## Cartes
+
+Les cartes sont des **tracés graybox originaux** (murs, caisses, repères), conçus pour chaque
+situation d'entraînement ; ce ne sont pas des reproductions de cartes d'un jeu existant.
+
+- `scenes/arena.tscn` — stand de tir.
+- `scenes/maps/strafe_lane.tscn` — couloir de strafe : zone de déplacement derrière un comptoir,
+  cibles à hauteur de tête à 16 m.
+- `scenes/maps/angle_hall.tscn` — hall d'angles : un mur de couverture dont on tranche le coin
+  (jiggle peek), et au fond une cloison percée d'un passage (tenue d'angle).
+- `scenes/maps/kill_house.tscn` — parcours : cinq couloirs en serpentin, reliés par des passages
+  alternés, avec caisses basses et hautes. Deux positions de cible possibles par angle.
+
+Chaque carte contient un nœud `Markers` dont les `Marker3D` nomment les points utilisés par les
+exercices (apparition du joueur, positions de cibles). Elles s'éditent librement dans Godot :
+déplacer un mur, une caisse ou un repère suffit.
+
+## Données collectées
+
+À chaque tick physique (1000 Hz) pendant une session :
+
+- yaw et pitch de la caméra, vitesse angulaire ;
+- position et vitesse de déplacement du joueur ;
+- état des touches de déplacement.
+
+À chaque événement :
+
+- **tir** : touché ou non, écart angulaire à la cible visée, rayon apparent de la cible, vitesse
+  du joueur, déviation appliquée, et données propres à l'exercice (méthode d'arrêt, temps de
+  réaction, temps depuis la découverte de la cible...) ;
+- **touche** enfoncée ou relâchée, avec la vitesse à cet instant ;
+- **événement d'exercice** : apparition ou découverte d'une cible, début et fin d'une sortie de
+  couverture, validation d'un décompte...
+
+Le rapport de fin de session en tire, selon l'exercice : précision, temps entre cibles,
+overflick / underflick, indice de fluidité, heatmap des tirs ratés, trajet total du viseur et
+distance parcourue par la souris, distance et temps de déplacement, cadence de tir, plus toutes
+les statistiques de l'exercice. Le bouton **TOUTES LES DONNÉES** du rapport liste chaque valeur.
+
+### Fichiers écrits
+
+Tout est rangé dans le dossier utilisateur du projet (`user://`, affiché par *Projet → Ouvrir le
+dossier de données utilisateur* dans l'éditeur) :
+
+- `settings.cfg` — réglages ;
+- `history.json` — toutes les statistiques scalaires de chaque session, pour suivre la
+  progression (2000 sessions conservées) ;
+- `telemetry/<date>_<exercice>.csv` — un échantillon par ligne (1000 par seconde) ;
+- `telemetry/<date>_<exercice>.json` — rapport complet, tirs et événements.
+
+Les 20 dernières sessions sont conservées dans `telemetry/`. L'export brut se désactive dans le
+menu (section *Son et données*).
+
+## Conseil du coach
+
+À la fin de chaque exercice, `scripts/coach.gd` passe les statistiques au crible de règles
+propres à l'exercice et affiche le conseil le plus prioritaire, suivi de deux pistes
+secondaires. Exemples :
+
+- overflick fréquent → freiner plus tôt, avec une valeur de cm/360° à essayer ;
+- tirs partis avant l'arrêt → vitesse moyenne au tir et rappel du geste de contre-strafe ;
+- viseur trop bas à la découverte des cibles → de combien de degrés, et comment le corriger ;
+- décompte trop rapide → décalage en pourcentage et ce qu'il représente sur 38 s.
+
+Le coach compare aussi le score à l'historique de l'exercice (record, moyenne des cinq dernières
+sessions). Les seuils sont de simples constantes dans le script.
 
 ## Visée et sensibilité
 
@@ -74,49 +153,58 @@ environment/                  Environment : ciel procédural, glow, SSAO, SDFGI/
   `degrés par count = 360 × 2,54 / (cm/360° × DPI)`.
 - Convertisseur intégré (yaw par count pour une sensibilité de 1) : Valorant 0,07 · CS2 0,022 ·
   Apex Legends 0,022 · Overwatch 2 0,0066.
-- Le FOV se règle en FOV horizontal 16:9 (103° par défaut) et est converti en FOV vertical.
+- Le FOV se règle en FOV horizontal 16:9 (103° par défaut).
 - Le réticule (croix, croix + point, point, cercle ; couleur, longueur, épaisseur, écart, contour,
-  opacité) est dessiné au pixel physique près. Les réglages sont enregistrés dans
-  `user://settings.cfg`.
+  opacité) est dessiné au pixel physique près.
 
-## Gridshot
+## Méthodes d'analyse
 
-Une grille invisible de 5 × 5 cellules est placée à 9 m face au joueur. Trois sphères y sont
-présentes en permanence ; un clic gauche lance un `RayCast3D` depuis la caméra : si une cible est
-touchée elle explose (`GPUParticles3D`, flash, onde de choc) et une nouvelle apparaît aussitôt
-dans une autre cellule libre. Les paramètres (taille de grille, espacement, distance, rayon,
-nombre de cibles, barème) sont exportés sur le nœud `Main` de `scenes/main.tscn`.
-
-Score : 100 points par cible, plus jusqu'à 100 points de bonus de vitesse (complet sous 150 ms
-entre deux cibles, nul au-delà de 800 ms), moins 35 points par tir raté.
-
-## Télémétrie
-
-Pendant la session, l'autoload `Telemetry` enregistre à chaque tick physique (1000 Hz) le yaw et
-le pitch de la caméra ainsi que la vitesse angulaire, et horodate chaque tir avec son écart
-angulaire à la cible visée (la cible touchée, ou la plus proche du viseur en cas de tir raté).
-
-Le rapport de fin de session affiche :
-
-- **Score, précision, temps moyen entre deux cibles** (moyenne, médiane, record).
 - **Overflick / Underflick** : chaque trajet entre deux tirs d'au moins 3° est analysé. On isole
   le mouvement balistique primaire (premier sous-mouvement rapide, après la fin de la décélération
   du tir précédent) et on projette sa position finale sur l'axe départ → cible. Au-delà du bord
   opposé de la cible : overflick. Avant le bord proche : underflick. Sinon : précis.
 - **Indice de fluidité** : variance de l'accélération angulaire de chaque mouvement, rapportée à
   la variance minimale théorique pour la même amplitude et la même durée. 100 correspond à un
-  geste unique de type « minimum-jerk » ; les corrections successives et le jitter font baisser
-  l'indice.
-- **Heatmap des tirs ratés** : dispersion des tirs autour du centre de la cible, en rayons de
-  cible, générée dynamiquement (noyaux gaussiens → `ImageTexture`), avec le biais moyen.
+  geste unique de type « minimum-jerk ».
+- **Exposition** (jiggle peek) : le joueur est exposé dès que l'adversaire a une ligne de vue sur
+  sa tête ou une épaule ; il a l'information quand l'adversaire est à l'écran. Les épaules
+  dépassent 30 cm avant la caméra.
+- **Erreur de pré-visée** : écart angulaire entre le viseur et la cible à l'image où elle devient
+  visible, décomposé en vertical (viseur trop bas / trop haut) et horizontal.
 
 ### Résolution temporelle
 
-Godot distribue les événements souris une fois par image rendue. L'échantillonnage est bien à
-1000 Hz, mais l'angle de visée ne change qu'à la cadence du rendu : la finesse de l'analyse
-dépend donc du FPS. C'est pourquoi la V-Sync est désactivée et le FPS illimité par défaut pendant
-une session, et pourquoi la fenêtre de dérivation s'adapte au FPS mesuré. Viser 144 FPS ou plus
-pour une analyse fiable des flicks.
+Godot distribue les événements souris et clavier une fois par image rendue. L'échantillonnage est
+bien à 1000 Hz, mais la visée et les touches ne changent qu'à la cadence du rendu : la finesse de
+l'analyse dépend donc du FPS. C'est pourquoi la V-Sync est désactivée et le FPS illimité par
+défaut pendant une session. Viser 144 FPS ou plus.
+
+## Structure
+
+```
+project.godot                 Configuration (Forward+, physique 1000 Hz, autoloads, thème)
+scenes/
+  main.tscn                   Scène principale : carte + joueur + exercice + UI
+  arena.tscn, maps/           Cartes
+  player.tscn, target.tscn    Joueur (CharacterBody3D), cible
+  effects/                    Explosion de cible, impact, traceur
+scripts/
+  game_manager.gd             États de jeu, chargement de la carte et de l'exercice
+  player.gd                   Visée brute, déplacement, tir, imprécision en mouvement
+  telemetry_manager.gd        Autoload « Telemetry » : capture 1000 Hz, analyse, export
+  session_history.gd          Autoload « SessionHistory » : historique des sessions
+  settings_manager.gd         Autoload « GameSettings » : réglages
+  sfx.gd                      Autoload « Sfx » : sons synthétisés
+  coach.gd                    Règles de conseil
+  drills/                     Classe de base, catalogue et exercices
+  stats.gd, fx_spawner.gd, target.gd, tracer.gd, one_shot_effect.gd
+ui/
+  hud.tscn                    Réticule, score, chrono, objectif, retour, jauge de vitesse
+  stats_dashboard.tscn        Rapport : coach, KPI, graphique, flicks, heatmap, données
+  main_menu.tscn              Choix de l'exercice et réglages
+  bar_chart.gd, heatmap.gd, flick_bar.gd, speed_gauge.gd, crosshair.gd, kinetic_theme.tres
+materials/, shaders/, environment/
+```
 
 ## Qualité graphique
 
