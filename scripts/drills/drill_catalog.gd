@@ -131,6 +131,18 @@ const DRILLS := [
 		"params": {},
 	},
 	{
+		"id": "lineups",
+		"title": "LINEUPS",
+		"tag": "Carte",
+		"focus": "Trouver et mémoriser des lancers d'utilitaires",
+		"description": "Une zone cible est marquée sur un site. Fais-y atterrir un incendiaire (2 puis clic droit) depuis l'endroit de ton choix : chaque lancer réussi est enregistré avec ta position et ta visée, et rappelé ensuite. Le fumigène se pose depuis la mini-carte (1). Utilitaires illimités.",
+		"map": MAP_RANGE,
+		"maps": TACTICAL_MAPS,
+		"script": preload("res://scripts/drills/lineup_drill.gd"),
+		"duration": 240.0,
+		"params": {},
+	},
+	{
 		"id": "gridshot",
 		"title": "GRIDSHOT",
 		"tag": "Visée",

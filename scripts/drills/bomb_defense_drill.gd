@@ -62,6 +62,7 @@ func shows_clock() -> bool:
 
 func update(delta: float) -> void:
 	hud.set_speed(player.horizontal_speed(), PlayerController.ACCURATE_SPEED, PlayerController.RUN_SPEED)
+	tick_utilities(delta)
 	if _result != "":
 		return
 	_wave_timer -= delta
@@ -103,6 +104,7 @@ func on_player_died() -> void:
 	player.teleport(marker("Lobby" + _site), 0.0)
 	player.automatic = true
 	player.recoil_enabled = true
+	player.utility_enabled = true
 
 
 func finalize(report: Dictionary) -> void:

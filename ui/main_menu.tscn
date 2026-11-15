@@ -134,7 +134,7 @@ text = "LANCER LA SESSION"
 custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
 theme_type_variation = &"HintLabel"
-text = "ZQSD (WASD en QWERTY) : se déplacer · Maj : marcher · Ctrl : s'accroupir · Espace : sauter / valider · Clic gauche : tirer · Échap : menu · F11 : plein écran"
+text = "ZQSD (WASD en QWERTY) : se déplacer · Maj : marcher · Ctrl : s'accroupir · Espace : sauter / valider · Clic gauche : tirer · 1 2 3 + clic droit : utilitaires · Échap : menu · F11 : plein écran"
 autowrap_mode = 3
 
 [node name="QuitButton" type="Button" parent="Margin/Columns/Left"]

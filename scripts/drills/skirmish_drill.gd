@@ -39,6 +39,7 @@ func begin() -> void:
 
 func update(delta: float) -> void:
 	hud.set_speed(player.horizontal_speed(), PlayerController.ACCURATE_SPEED, PlayerController.RUN_SPEED)
+	tick_utilities(delta)
 	if bots.size() < bot_count:
 		_respawn_timer -= delta
 		if _respawn_timer <= 0.0:
@@ -70,6 +71,7 @@ func on_player_died() -> void:
 	player.teleport(marker("AttackerSpawn"), 0.0)
 	player.automatic = true
 	player.recoil_enabled = true
+	player.utility_enabled = true
 	_refresh_side_stat()
 
 

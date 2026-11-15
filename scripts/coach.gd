@@ -42,6 +42,18 @@ static func build_advice(drill_id: String, report: Dictionary, previous: Array[D
 			_bot_combat_rules(advice, report)
 		"skirmish":
 			_bot_combat_rules(advice, report)
+			var used := _count(report, "smokes_used") + _count(report, "incendiaries_used") + _count(report, "flashes_used")
+			if used == 0 and _count(report, "deaths") >= 2:
+				_add(advice, 74.0, "Tu n'utilises pas tes utilitaires",
+						"Aucun utilitaire lancé pour %d morts. Un fumigène (1) coupe une ligne de vue, un flash (3) aveugle un bot qui te regarde : sers-t'en avant de sortir d'un angle." % _count(report, "deaths"), TONE_FIX)
+		"lineups":
+			if _count(report, "lineup_throws") < 3:
+				_add(advice, 90.0, "Lance davantage", "Seulement %d lancers. Un lineup se trouve par essais : corrige ta visée après chaque écart affiché." % _count(report, "lineup_throws"), TONE_FIX)
+			elif _number(report, "lineup_success_rate") < 30.0:
+				_add(advice, 85.0, "Écart moyen de %.1f m" % _number(report, "lineup_mean_error_m"),
+						"%.0f %% de lancers réussis. Prends un repère fixe du décor sous ton viseur (coin de mur, sommet d'une caisse) et ne change qu'un paramètre à la fois : la distance, puis l'inclinaison." % _number(report, "lineup_success_rate"), TONE_FIX)
+			else:
+				_add(advice, 40.0, "Lineups enregistrés", "%d lineups trouvés : refais l'exercice pour vérifier que tu les reproduis du premier coup." % _count(report, "lineup_successes"), TONE_GOOD)
 		"peek_duel":
 			_peek_duel_rules(advice, report)
 		"multi_target":

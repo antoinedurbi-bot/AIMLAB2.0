@@ -18,6 +18,11 @@ extends CharacterBody3D
 ## décrit l'état du joueur au moment du tir (vitesse, déviation, touches...).
 signal fired(collider: Object, hit_position: Vector3, hit_normal: Vector3, muzzle_position: Vector3, shot: Dictionary)
 
+## Touche 1, 2 ou 3 (index 0 à 2) : choix d'un utilitaire.
+signal utility_key_pressed(index: int)
+## Clic droit : lancer l'utilitaire sélectionné depuis `origin` dans `direction`.
+signal utility_throw_requested(origin: Vector3, direction: Vector3)
+
 const MAX_PITCH_DEG := 89.0
 
 ## Vitesse de course et de marche (m/s).
@@ -66,6 +71,8 @@ var fire_enabled: bool = false
 var move_enabled: bool = false
 ## Dévie les tirs déclenchés en mouvement.
 var movement_inaccuracy: bool = false
+## Active les touches d'utilitaires (1, 2, 3 et clic droit).
+var utility_enabled: bool = false
 ## Tir automatique tant que le clic est maintenu.
 var automatic: bool = false
 ## Applique le recul (les balles montent puis se balancent pendant une rafale).
@@ -114,12 +121,18 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		# Mini-carte ouverte : la touche 1 doit encore pouvoir la refermer.
+		var map_key := event as InputEventKey
+		if utility_enabled and map_key != null and map_key.pressed and not map_key.echo and map_key.physical_keycode == KEY_1:
+			utility_key_pressed.emit(0)
 		return
 	if event is InputEventMouseMotion:
 		if look_enabled:
 			_look(event as InputEventMouseMotion)
 	elif event is InputEventMouseButton:
 		var button := event as InputEventMouseButton
+		if button.button_index == MOUSE_BUTTON_RIGHT and button.pressed and utility_enabled:
+			utility_throw_requested.emit(camera.global_position, -camera.global_transform.basis.z)
 		if button.button_index == MOUSE_BUTTON_LEFT:
 			_trigger_held = button.pressed
 			if fire_enabled and button.pressed and Time.get_ticks_usec() >= _next_shot_usec:
@@ -239,6 +252,7 @@ func reset_input() -> void:
 	_spray_index = 0
 	automatic = false
 	recoil_enabled = false
+	utility_enabled = false
 	Telemetry.input_mask = 0
 
 
@@ -362,6 +376,10 @@ func _handle_key(physical_keycode: Key, pressed: bool) -> void:
 		KEY_SHIFT:
 			_key_walk = pressed
 			label = "walk"
+		KEY_1, KEY_2, KEY_3:
+			if pressed and utility_enabled:
+				utility_key_pressed.emit(int(physical_keycode) - int(KEY_1))
+			return
 		KEY_CTRL:
 			_key_crouch = pressed
 			label = "crouch"

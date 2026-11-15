@@ -31,7 +31,8 @@ const Humanoid := preload("res://scripts/humanoid_target.gd")
 const PlayerController := preload("res://scripts/player.gd")
 const NavGrid := preload("res://scripts/ai/nav_grid.gd")
 
-const WORLD_MASK := 1
+## Décor + fumigènes : ce qui bloque la vue d'un bot.
+const VISION_MASK := 9
 ## Décor + joueur : ce que les balles d'un bot peuvent toucher.
 const SHOT_MASK := 5
 const WAYPOINT_REACHED := 0.6
@@ -98,6 +99,7 @@ var _moving_fire: bool = false
 var _cover_wait: float = 0.0
 var _fight_position: Vector3 = Vector3.ZERO
 var _moved: bool = false
+var _blind_seconds: float = 0.0
 
 
 func setup(body: Humanoid, player: PlayerController, nav: NavGrid, profile: Dictionary) -> void:
@@ -151,6 +153,16 @@ func notify_damage(from_position: Vector3) -> void:
 		_seen_seconds = maxf(_seen_seconds, _reaction * 0.5)
 
 
+## Aveugle le bot si l'explosion d'un flash est dans son champ de vision et non masquée.
+func try_blind(flash_position: Vector3, seconds: float) -> bool:
+	var angle := absf(wrapf(_yaw_to(flash_position) - _facing_yaw, -180.0, 180.0))
+	if angle > _fov or not _line_of_sight(_body.head_position(), flash_position):
+		return false
+	_blind_seconds = seconds
+	_seen_seconds = 0.0
+	return true
+
+
 func is_defusing() -> bool:
 	return state == State.DEFUSING
 
@@ -187,7 +199,8 @@ func _perceive(delta: float) -> void:
 	var head := _body.head_position()
 	var distance := head.distance_to(eye)
 	var angle := absf(wrapf(_yaw_to(eye) - _facing_yaw, -180.0, 180.0))
-	_visible = (angle <= _fov or distance < 3.0) and _line_of_sight(head, eye)
+	_blind_seconds = maxf(_blind_seconds - delta, 0.0)
+	_visible = _blind_seconds <= 0.0 and (angle <= _fov or distance < 3.0) and _line_of_sight(head, eye)
 	if _visible:
 		_seen_seconds += delta
 		_unseen_seconds = 0.0
@@ -225,7 +238,7 @@ func _remembers_player() -> bool:
 
 
 func _line_of_sight(from: Vector3, to: Vector3) -> bool:
-	var query := PhysicsRayQueryParameters3D.create(from, to, WORLD_MASK)
+	var query := PhysicsRayQueryParameters3D.create(from, to, VISION_MASK)
 	return _body.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 

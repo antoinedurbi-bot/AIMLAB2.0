@@ -20,6 +20,8 @@ const TARGET_SCENE: PackedScene = preload("res://scenes/target.tscn")
 
 ## Couche de collision du décor (murs, sol, caisses).
 const WORLD_MASK := 1
+## Décor + fumigènes : ce qui bloque une ligne de vue.
+const VISION_MASK := 9
 ## Demi-champ de vision utilisé pour décider si un point est « à l'écran » (degrés).
 const VIEW_HALF_WIDTH := 48.0
 const VIEW_HALF_HEIGHT := 31.0
@@ -147,7 +149,7 @@ func spawn_target(at: Vector3, radius: float, enemy_style: bool = false) -> AimT
 
 ## Vrai si aucun élément du décor ne coupe le segment `from` → `to`.
 func line_of_sight(from: Vector3, to: Vector3) -> bool:
-	var query := PhysicsRayQueryParameters3D.create(from, to, WORLD_MASK)
+	var query := PhysicsRayQueryParameters3D.create(from, to, VISION_MASK)
 	var result := get_world_3d().direct_space_state.intersect_ray(query)
 	return result.is_empty()
 

@@ -123,6 +123,26 @@ func adjust_difficulty(drill_id: String, success: float) -> float:
 	return level
 
 
+# --- Lineups ---
+
+## Enregistre un lineup réussi : position du joueur, orientation et inclinaison du viseur.
+func save_lineup(map_key: String, target: String, data: Dictionary) -> void:
+	var lineups: Dictionary = _data.get("lineups", {})
+	lineups["%s/%s" % [map_key, target]] = data.duplicate()
+	_data["lineups"] = lineups
+	_save()
+
+
+## Lineup enregistré pour cette cible, ou un dictionnaire vide.
+func lineup(map_key: String, target: String) -> Dictionary:
+	var lineups: Dictionary = _data.get("lineups", {})
+	var entry: Variant = lineups.get("%s/%s" % [map_key, target], {})
+	if entry is Dictionary:
+		var saved: Dictionary = entry
+		return saved
+	return {}
+
+
 # --- Routine du jour ---
 
 ## Nombre de sessions de cet exercice déjà faites aujourd'hui.

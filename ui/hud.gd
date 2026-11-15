@@ -12,6 +12,7 @@ const COLOR_INFO := Color(0.55, 0.9, 1.0)
 
 var _countdown_tween: Tween
 var _feedback_tween: Tween
+var _flash_tween: Tween
 var _fps_timer: float = 0.0
 var _last_time_text: String = ""
 ## Vrai quand un exercice a remplacé l'affichage de la précision par sa propre statistique.
@@ -29,6 +30,7 @@ var _custom_side_stat: bool = false
 @onready var _sens_label: Label = %SensLabel
 @onready var _countdown: Label = %CountdownLabel
 @onready var _feedback: Label = %FeedbackLabel
+@onready var _flash_overlay: ColorRect = %FlashOverlay
 
 
 func _ready() -> void:
@@ -48,6 +50,7 @@ func reset(mode_name: String, duration: float) -> void:
 	_mode_label.text = mode_name
 	_countdown.visible = false
 	_feedback.visible = false
+	_flash_overlay.visible = false
 	_objective.text = ""
 	_speed_gauge.visible = false
 	_custom_side_stat = false
@@ -107,6 +110,18 @@ func show_feedback(text: String, color: Color, hold: float = 1.3) -> void:
 	_feedback_tween.tween_interval(hold)
 	_feedback_tween.tween_property(_feedback, "modulate:a", 0.0, 0.3)
 	_feedback_tween.tween_callback(_feedback.hide)
+
+
+## Écran blanc qui se dissipe en `seconds` (effet d'un flash).
+func flash_screen(seconds: float) -> void:
+	if _flash_tween != null and _flash_tween.is_valid():
+		_flash_tween.kill()
+	_flash_overlay.visible = true
+	_flash_overlay.modulate = Color.WHITE
+	_flash_tween = create_tween()
+	_flash_tween.tween_interval(seconds * 0.45)
+	_flash_tween.tween_property(_flash_overlay, "modulate:a", 0.0, seconds * 0.55)
+	_flash_tween.tween_callback(_flash_overlay.hide)
 
 
 func set_speed_gauge_visible(gauge_visible: bool) -> void:

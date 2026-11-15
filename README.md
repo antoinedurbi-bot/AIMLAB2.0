@@ -101,6 +101,24 @@ Perdre le focus de la fenêtre pendant une session l'annule (les statistiques se
 - **Exercices** : Escarmouche (deux bots te traquent) et Défense de la charge (les bots
   viennent désamorcer et ripostent).
 
+## Utilitaires et lineups
+
+Utilitaires génériques (`scripts/utility/`), disponibles dans Escarmouche, Défense de la charge
+(deux charges de chaque) et Lineups (illimités). Ce ne sont pas les compétences d'un personnage
+précis.
+
+- **Fumigène — touche 1** : ouvre la mini-carte (`ui/tactical_map.gd`). Clic gauche sur une zone
+  praticable : le fumigène s'y déploie une seconde plus tard, pour 15 s. Clic droit ou 1 pour
+  annuler. Il bloque la vue (la tienne et celle des bots), pas les balles.
+- **Incendiaire — touche 2, puis clic droit** : lancé dans la direction du viseur, il rebondit
+  et s'enflamme au premier contact avec le sol : zone de 3,5 m pendant 7 s, 35 points de dégâts
+  par seconde pour quiconque s'y trouve, toi compris.
+- **Flash — touche 3, puis clic droit** : explose en l'air après 0,9 s. Aveugle 2,2 s ceux qui
+  l'ont dans leur champ de vision sans obstacle : les bots, et toi (écran blanc).
+- **Lineups** : une cible est marquée sur un site ; fais-y atterrir un incendiaire. Un lancer
+  réussi enregistre ta position, ton orientation et l'inclinaison du viseur dans
+  `user://profile.json` ; aux sessions suivantes, un disque cyan marque l'endroit où te placer.
+
 ## Exercices
 
 | Exercice | Ce qu'il travaille | Carte | Mesures principales |

@@ -54,6 +54,23 @@ func build(map_root: Node3D, bounds: Rect2) -> void:
 	ready = true
 
 
+## Dimensions de la grille en cellules, et emprise dans le monde (x, z en mètres).
+func grid_size() -> Vector2i:
+	return _size
+
+
+func world_origin() -> Vector2:
+	return _origin
+
+
+func world_size() -> Vector2:
+	return Vector2(_size) * CELL
+
+
+func is_cell_solid(cell: Vector2i) -> bool:
+	return not _inside(cell) or _grid.is_point_solid(cell)
+
+
 ## Vrai si un bot peut se tenir à cette position.
 func is_walkable(world_position: Vector3) -> bool:
 	var cell := _cell(world_position)

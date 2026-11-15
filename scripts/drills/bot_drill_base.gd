@@ -7,6 +7,7 @@ const Humanoid := preload("res://scripts/humanoid_target.gd")
 const BotBrain := preload("res://scripts/ai/bot_brain.gd")
 const NavGrid := preload("res://scripts/ai/nav_grid.gd")
 const BotRanks := preload("res://scripts/ai/bot_ranks.gd")
+const UtilityKit := preload("res://scripts/utility/utility_kit.gd")
 const HUMANOID_SCENE: PackedScene = preload("res://scenes/humanoid_target.tscn")
 
 ## Étendue couverte par la grille de navigation (x, z en mètres).
@@ -21,6 +22,11 @@ var bots: Array[Humanoid] = []
 ## target_id -> BotBrain.
 var brains: Dictionary = {}
 var player_health: float = PLAYER_MAX_HEALTH
+var utilities: UtilityKit
+## Charges de chaque utilitaire par session.
+var utility_charges: int = 2
+var bots_blinded: int = 0
+var burn_kills: int = 0
 
 var deaths: int = 0
 var bot_kills: int = 0
@@ -57,6 +63,42 @@ func prepare_bots() -> void:
 	player.recoil_enabled = true
 	player_health = PLAYER_MAX_HEALTH
 	nav.build(map_root, NAV_BOUNDS)
+	utilities = UtilityKit.new()
+	add_child(utilities)
+	utilities.start(player, hud, map_root, utility_charges)
+	utilities.detonated.connect(_on_utility_detonated)
+
+
+## À appeler à chaque image : brûlures des zones incendiaires.
+func tick_utilities(delta: float) -> void:
+	if utilities == null:
+		return
+	var burn := UtilityKit.FIRE_DAMAGE_PER_SECOND * delta
+	for index in range(bots.size() - 1, -1, -1):
+		var bot := bots[index]
+		if utilities.is_burning(bot.global_position) and bot.apply_damage(burn):
+			bot_kills += 1
+			burn_kills += 1
+			fx.explosion(bot.head_position())
+			bots.remove_at(index)
+			brains.erase(bot.target_id)
+			bot.destroy()
+	if utilities.is_burning(player.global_position):
+		player_health -= burn
+		damage_taken += burn
+		if player_health <= 0.0:
+			deaths += 1
+			player_health = PLAYER_MAX_HEALTH
+			on_player_died()
+
+
+func _on_utility_detonated(kind: int, at: Vector3) -> void:
+	if kind != UtilityKit.Kind.FLASH:
+		return
+	for bot in bots:
+		var brain := brain_of(bot)
+		if brain != null and bot.head_position().distance_to(at) <= UtilityKit.FLASH_RANGE and brain.try_blind(at, UtilityKit.FLASH_SECONDS):
+			bots_blinded += 1
 
 
 func spawn_bot(at: Vector3) -> BotBrain:
@@ -143,6 +185,12 @@ func add_combat_stats(report: Dictionary) -> void:
 	report["headshot_rate"] = Stats.percent(head_hits, head_hits + body_hits)
 	report["avg_bot_kill_ms"] = Stats.mean(kill_times)
 	report["bot_rank"] = bot_rank()
+	report["bots_blinded"] = bots_blinded
+	report["burn_kills"] = burn_kills
+	if utilities != null:
+		report["smokes_used"] = utilities.throws[UtilityKit.Kind.SMOKE]
+		report["incendiaries_used"] = utilities.throws[UtilityKit.Kind.INCENDIARY]
+		report["flashes_used"] = utilities.throws[UtilityKit.Kind.FLASH]
 	report["bot_rank_name"] = BotRanks.rank_name(bot_rank())
 	report["bot_rank_adaptive"] = GameSettings.bot_rank < 0
 	report["bot_headshot_rate"] = Stats.percent(bot_head_hits, bot_hits)
