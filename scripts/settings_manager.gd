@@ -58,6 +58,8 @@ var sfx_volume: float = 0.6
 var export_raw_telemetry: bool = true
 ## Identifiant du dernier exercice lancé (présélectionné dans le menu).
 var last_drill: String = "gridshot"
+## Identifiant du profil d'arme (voir scripts/weapons.gd).
+var weapon: String = "rifle"
 
 
 func _ready() -> void:
@@ -99,6 +101,53 @@ func game_name(index: int) -> String:
 func vertical_fov() -> float:
 	var half_horizontal := deg_to_rad(fov_horizontal) * 0.5
 	return rad_to_deg(2.0 * atan(tan(half_horizontal) * 9.0 / 16.0))
+
+
+# ---------------------------------------------------------------------------
+# Réticule : préréglages et code d'échange
+# ---------------------------------------------------------------------------
+
+## Préréglages proposés dans le menu (nom -> code).
+const CROSSHAIR_PRESETS := {
+	"Croix + point": "KA1;1;00ffd9;7;2;4;2;1;1.00",
+	"Petite croix": "KA1;0;ffffff;4;2;3;2;1;1.00",
+	"Point seul": "KA1;2;00ff66;0;2;0;4;1;1.00",
+	"Cercle + point": "KA1;3;ff4fd8;6;2;5;2;1;0.90",
+	"Croix fine large": "KA1;0;ffe600;10;1;6;2;0;0.85",
+}
+
+
+## Code texte du réticule courant, à copier pour le partager ou le sauvegarder :
+## KA1;forme;couleur hex;longueur;épaisseur;écart;point;contour;opacité.
+func crosshair_to_code() -> String:
+	return "KA1;%d;%s;%d;%d;%d;%d;%d;%.2f" % [
+		crosshair_style, crosshair_color.to_html(false), roundi(crosshair_length), roundi(crosshair_thickness),
+		roundi(crosshair_gap), roundi(crosshair_dot_size), 1 if crosshair_outline else 0, crosshair_opacity]
+
+
+## Applique un code produit par crosshair_to_code(). Renvoie faux si le code est invalide
+## (le réticule courant est alors conservé).
+func crosshair_from_code(code: String) -> bool:
+	var parts := code.strip_edges().split(";")
+	if parts.size() != 9 or parts[0] != "KA1":
+		return false
+	if not Color.html_is_valid(parts[2]):
+		return false
+	for index in [1, 3, 4, 5, 6, 7]:
+		var field: String = parts[index]
+		if not field.is_valid_int():
+			return false
+	if not parts[8].is_valid_float():
+		return false
+	crosshair_style = clampi(parts[1].to_int(), 0, CrosshairStyle.size() - 1)
+	crosshair_color = Color.html(parts[2])
+	crosshair_length = clampf(parts[3].to_float(), 0.0, 60.0)
+	crosshair_thickness = clampf(parts[4].to_float(), 1.0, 12.0)
+	crosshair_gap = clampf(parts[5].to_float(), 0.0, 40.0)
+	crosshair_dot_size = clampf(parts[6].to_float(), 1.0, 16.0)
+	crosshair_outline = parts[7].to_int() != 0
+	crosshair_opacity = clampf(parts[8].to_float(), 0.1, 1.0)
+	return true
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +199,7 @@ func save_settings() -> void:
 	cfg.set_value("audio", "sfx_volume", sfx_volume)
 	cfg.set_value("data", "export_raw_telemetry", export_raw_telemetry)
 	cfg.set_value("data", "last_drill", last_drill)
+	cfg.set_value("data", "weapon", weapon)
 	var error := cfg.save(SAVE_PATH)
 	if error != OK:
 		push_warning("KINETIC // AIM : impossible d'enregistrer %s (erreur %d)." % [SAVE_PATH, error])
@@ -182,6 +232,9 @@ func load_settings() -> void:
 	var stored_drill: Variant = cfg.get_value("data", "last_drill", last_drill)
 	if stored_drill is String:
 		last_drill = stored_drill
+	var stored_weapon: Variant = cfg.get_value("data", "weapon", weapon)
+	if stored_weapon is String:
+		weapon = stored_weapon
 
 
 func _read_float(cfg: ConfigFile, section: String, key: String, fallback: float) -> float:

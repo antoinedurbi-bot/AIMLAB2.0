@@ -32,8 +32,25 @@ static func build_advice(drill_id: String, report: Dictionary, previous: Array[D
 			_pre_aim_rules(advice, report)
 		"benchmark":
 			_benchmark_rules(advice, report)
-		"duel":
+		"duel", "tap_burst":
 			_duel_rules(advice, report)
+			if drill_id == "tap_burst" and _number(report, "avg_burst_length") > 3.5:
+				_add(advice, 90.0, "Rafales trop longues pour cette distance",
+						"%.1f balles par rafale en moyenne. À longue distance, seules les deux ou trois premières balles restent groupées : tire court, replace, recommence." % _number(report, "avg_burst_length"), TONE_FIX)
+		"peek_duel":
+			_peek_duel_rules(advice, report)
+		"multi_target":
+			_multi_target_rules(advice, report)
+		"sound_locate":
+			_sound_rules(advice, report)
+		"defuse":
+			_pre_aim_rules(advice, report)
+			if not bool(report.get("defused", false)):
+				_add(advice, 92.0, "La charge a explosé",
+						"Tu n'as pas désamorcé à temps. Il faut 7 s immobile : commence à désamorcer au plus tard à 38 s, donc ne passe pas plus de 30 s à nettoyer le site.", TONE_FIX)
+			elif _number(report, "defuse_margin_s") > 12.0:
+				_add(advice, 40.0, "Désamorçage large",
+						"%.1f s de marge. Tu peux te permettre de nettoyer plus prudemment, ou de prendre un trajet plus sûr." % _number(report, "defuse_margin_s"), TONE_GOOD)
 		"free_roam":
 			_add(advice, 50.0, "Carte reconnue",
 					"%d m parcourus. Enchaîne maintenant avec « Attaque de site » ou « Reprise de site » sur cette carte pour mettre les trajets à l'épreuve." % _count(report, "distance_moved_m"), TONE_INFO)
@@ -412,6 +429,69 @@ static func _duel_rules(advice: Array[Dictionary], report: Dictionary) -> void:
 	elif win_rate >= 80.0:
 		_add(advice, 36.0, "Duels maîtrisés à ce niveau",
 				"%.0f %% de duels gagnés : la difficulté monte pour la prochaine session (cible plus rapide, temps plus court)." % win_rate, TONE_GOOD)
+
+
+static func _peek_duel_rules(advice: Array[Dictionary], report: Dictionary) -> void:
+	var duels := _count(report, "duels")
+	var win_rate := _number(report, "duel_win_rate")
+	var exposure := _number(report, "avg_exposure_ms")
+	var limit := _number(report, "enemy_reaction_ms")
+	var wide := _count(report, "wide_peek_wins")
+	var tight := _count(report, "tight_peek_wins")
+	if duels < 5:
+		_add(advice, 95.0, "Trop peu de duels", "Seulement %d duels joués. Sors du coin plus souvent : il en faut une dizaine pour un diagnostic." % duels, TONE_FIX)
+		return
+	if win_rate < 50.0:
+		_add(advice, 90.0, "L'adversaire tire avant toi",
+				"%.0f %% de duels gagnés face à une riposte à %d ms. Place ton viseur à hauteur de tête sur l'angle AVANT de sortir : tu n'as le temps que d'un micro-ajustement, pas d'un flick." % [win_rate, roundi(limit)], TONE_FIX)
+	if _number(report, "headshot_rate") < 30.0 and _count(report, "hits") >= 8:
+		_add(advice, 80.0, "Vise la tête en sortant",
+				"%.0f %% de tirs à la tête. Derrière une caisse, seule la tête dépasse : un viseur trop bas tire dans la caisse." % _number(report, "headshot_rate"), TONE_FIX)
+	if wide > tight * 2 and wide >= 4:
+		_add(advice, 62.0, "Tu sors presque toujours large",
+				"%d sorties larges contre %d serrées. La sortie large surprend, mais t'expose à tous les angles : garde-la pour quand tu connais la position, et tranche serré le reste du temps." % [wide, tight], TONE_INFO)
+	if win_rate >= 50.0 and exposure > limit * 0.75:
+		_add(advice, 60.0, "Tu gagnes de justesse",
+				"Tu es exposé %d ms en moyenne avant d'éliminer, pour une riposte à %d ms. Si le premier tir ne touche pas, reviens à couvert et ressors plutôt que d'insister." % [roundi(exposure), roundi(limit)], TONE_FIX)
+	elif win_rate >= 80.0:
+		_add(advice, 36.0, "Sorties d'angle maîtrisées", "%.0f %% de duels gagnés : la riposte sera plus rapide à la prochaine session." % win_rate, TONE_GOOD)
+
+
+static func _multi_target_rules(advice: Array[Dictionary], report: Dictionary) -> void:
+	var waves := _count(report, "waves")
+	var transfer := _number(report, "avg_transfer_ms")
+	if waves < 3:
+		_add(advice, 95.0, "Trop peu de vagues", "Seulement %d vagues nettoyées. Engage la première cible dès l'apparition de la vague." % waves, TONE_FIX)
+		return
+	if transfer > 800.0:
+		_add(advice, 86.0, "Transferts lents",
+				"%d ms entre deux éliminations. Repère la cible suivante AVANT d'avoir fini la première, et traite-les dans l'ordre où elles s'alignent, pas au hasard." % roundi(transfer), TONE_FIX)
+	if _number(report, "bullets_per_kill") > 6.0:
+		_add(advice, 78.0, "Trop de balles par cible",
+				"%.1f balles par élimination. Au transfert, relâche une fraction de seconde pour remettre le recul à zéro si la cible suivante est loin." % _number(report, "bullets_per_kill"), TONE_FIX)
+	if _number(report, "headshot_rate") < 25.0:
+		_add(advice, 70.0, "Reste à hauteur de tête pendant le transfert",
+				"%.0f %% de tirs à la tête. Déplace le viseur à l'horizontale d'une tête à l'autre : toutes sont à la même hauteur." % _number(report, "headshot_rate"), TONE_FIX)
+	if transfer <= 500.0 and transfer > 0.0:
+		_add(advice, 34.0, "Transferts rapides", "%d ms en moyenne entre deux cibles : la difficulté monte." % roundi(transfer), TONE_GOOD)
+
+
+static func _sound_rules(advice: Array[Dictionary], report: Dictionary) -> void:
+	var error := _number(report, "sound_mean_error_deg")
+	if _count(report, "sound_reps") < 4:
+		_add(advice, 95.0, "Trop peu d'essais", "Termine les dix essais pour obtenir une mesure fiable.", TONE_FIX)
+		return
+	if _count(report, "sound_side_confusions") >= 2:
+		_add(advice, 92.0, "Gauche et droite inversées",
+				"%d réponses du mauvais côté. Vérifie que ton casque n'est pas à l'envers et que la sortie audio est bien en stéréo, sans effet de spatialisation supplémentaire." % _count(report, "sound_side_confusions"), TONE_FIX)
+	if _count(report, "sound_front_back_confusions") >= 2:
+		_add(advice, 80.0, "Avant et arrière confondus",
+				"%d confusions avant / arrière. C'est la limite du son stéréo : tourne légèrement la tête (le viseur) pendant le signal, le son se déplace alors d'un côté et lève le doute." % _count(report, "sound_front_back_confusions"), TONE_FIX)
+	if error > 25.0:
+		_add(advice, 70.0, "Localisation imprécise",
+				"%d° d'erreur moyenne. Balaye lentement jusqu'à ce que le son soit centré entre les deux oreilles, puis clique." % roundi(error), TONE_FIX)
+	else:
+		_add(advice, 34.0, "Bonne oreille", "%d° d'erreur moyenne : assez précis pour pré-viser un angle au son." % roundi(error), TONE_GOOD)
 
 
 # ---------------------------------------------------------------------------

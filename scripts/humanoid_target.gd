@@ -11,8 +11,6 @@ const HEAD_HEIGHT := 1.62
 const HEAD_RADIUS := 0.14
 ## Hauteur (m) au-dessus des pieds à partir de laquelle un impact compte comme tête.
 const HEAD_LIMIT := 1.46
-const HEAD_DAMAGE := 150.0
-const BODY_DAMAGE := 40.0
 
 var target_id: int = -1
 var alive: bool = true
@@ -87,9 +85,9 @@ func current_speed() -> float:
 	return absf(_velocity)
 
 
-## Applique les dégâts d'un impact ; renvoie vrai si la cible est éliminée.
-func apply_hit(head: bool) -> bool:
-	health -= HEAD_DAMAGE if head else BODY_DAMAGE
+## Applique des dégâts (la cible a 100 points de vie) ; renvoie vrai si elle est éliminée.
+func apply_damage(amount: float) -> bool:
+	health -= amount
 	return health <= 0.0
 
 

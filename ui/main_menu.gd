@@ -11,6 +11,7 @@ signal quit_requested
 const DrillCatalog := preload("res://scripts/drills/drill_catalog.gd")
 const TrainingPlan := preload("res://scripts/training_plan.gd")
 const RadarChart := preload("res://ui/radar_chart.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 
 const CROSSHAIR_STYLES := ["Croix", "Croix + point", "Point", "Cercle + point"]
 const QUALITY_LEVELS := ["Performance", "Qualité (SSAO, MSAA 4x)", "Ultra (+ SDFGI, SSR)"]
@@ -30,6 +31,13 @@ var _routine_label: Label
 var _routine_button: Button
 var _next_routine_drill: String = ""
 var _drill_buttons: Dictionary = {}
+## Contrôles de l'éditeur de réticule, pour les resynchroniser après un import.
+var _crosshair_spins: Dictionary = {}
+var _crosshair_style_option: OptionButton
+var _crosshair_color_button: ColorPickerButton
+var _crosshair_outline_check: CheckBox
+var _crosshair_code_edit: LineEdit
+var _crosshair_status: Label
 
 @onready var _play_button: Button = %PlayButton
 @onready var _quit_button: Button = %QuitButton
@@ -87,7 +95,9 @@ func _build_drill_list() -> void:
 		var entry: Dictionary = item
 		var drill_id: String = entry.get("id", "")
 		var button := Button.new()
-		button.text = "%s   ·   %s" % [entry.get("title", ""), entry.get("tag", "")]
+		button.text = str(entry.get("title", ""))
+		button.tooltip_text = str(entry.get("focus", ""))
+		button.clip_text = true
 		button.theme_type_variation = &"DrillButton"
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.toggle_mode = true
@@ -258,6 +268,17 @@ func _build_sensitivity_section() -> void:
 	_sens_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_settings_list.add_child(_sens_summary)
 
+	var weapon_option := OptionButton.new()
+	var weapon_index := 0
+	for weapon_id: String in Weapons.ORDER:
+		var profile: Dictionary = Weapons.get_profile(weapon_id)
+		weapon_option.add_item(str(profile.get("name", weapon_id)))
+		if weapon_id == GameSettings.weapon:
+			weapon_index = weapon_option.item_count - 1
+	weapon_option.select(weapon_index)
+	weapon_option.item_selected.connect(_on_weapon_selected)
+	_add_row("Arme (exercices de combat)", weapon_option)
+
 	var fov_spin := _make_spin(60.0, 130.0, 1.0, GameSettings.fov_horizontal, "°")
 	fov_spin.value_changed.connect(_on_fov_changed)
 	_add_row("FOV horizontal (16:9)", fov_spin)
@@ -293,6 +314,11 @@ func _on_game_sens_changed(value: float) -> void:
 		return
 	var converted: float = GameSettings.game_sens_to_cm(_selected_game(), value)
 	GameSettings.cm_per_360 = clampf(converted, 1.0, 300.0)
+	_commit_sensitivity()
+
+
+func _on_weapon_selected(index: int) -> void:
+	GameSettings.weapon = str(Weapons.ORDER[clampi(index, 0, Weapons.ORDER.size() - 1)])
 	_commit_sensitivity()
 
 
@@ -332,12 +358,42 @@ func _refresh_sensitivity_fields() -> void:
 func _build_crosshair_section() -> void:
 	_add_section("RÉTICULE")
 
+	# Créer : partir d'un préréglage.
+	var preset_option := OptionButton.new()
+	preset_option.add_item("Choisir un préréglage…")
+	for preset_name: String in GameSettings.CROSSHAIR_PRESETS:
+		preset_option.add_item(preset_name)
+	preset_option.item_selected.connect(_on_crosshair_preset_selected.bind(preset_option))
+	_add_row("Préréglage", preset_option)
+
+	# Importer / exporter : un code texte à coller ou à copier.
+	_crosshair_code_edit = LineEdit.new()
+	_crosshair_code_edit.placeholder_text = "Colle un code KA1;… puis IMPORTER"
+	_crosshair_code_edit.text_submitted.connect(_on_crosshair_code_submitted)
+	_add_row("Code du réticule", _crosshair_code_edit)
+	var code_buttons := HBoxContainer.new()
+	code_buttons.add_theme_constant_override(&"separation", 8)
+	var import_button := Button.new()
+	import_button.text = "IMPORTER"
+	import_button.pressed.connect(_on_crosshair_import_pressed)
+	code_buttons.add_child(import_button)
+	var export_button := Button.new()
+	export_button.text = "COPIER MON CODE"
+	export_button.pressed.connect(_on_crosshair_export_pressed)
+	code_buttons.add_child(export_button)
+	_settings_list.add_child(code_buttons)
+	_crosshair_status = Label.new()
+	_crosshair_status.theme_type_variation = &"CaptionLabel"
+	_crosshair_status.text = "Le code contient forme, couleur, tailles, contour et opacité."
+	_settings_list.add_child(_crosshair_status)
+
 	var style_option := OptionButton.new()
 	for style_name: String in CROSSHAIR_STYLES:
 		style_option.add_item(style_name)
 	style_option.select(GameSettings.crosshair_style)
 	style_option.item_selected.connect(_on_crosshair_style_selected)
 	_add_row("Forme", style_option)
+	_crosshair_style_option = style_option
 
 	var color_button := ColorPickerButton.new()
 	color_button.color = GameSettings.crosshair_color
@@ -345,6 +401,7 @@ func _build_crosshair_section() -> void:
 	color_button.custom_minimum_size.y = 34.0
 	color_button.color_changed.connect(_on_crosshair_color_changed)
 	_add_row("Couleur", color_button)
+	_crosshair_color_button = color_button
 
 	_add_crosshair_spin("Longueur des branches", &"crosshair_length", 0.0, 40.0, 1.0, " px")
 	_add_crosshair_spin("Épaisseur", &"crosshair_thickness", 1.0, 10.0, 1.0, " px")
@@ -357,6 +414,49 @@ func _build_crosshair_section() -> void:
 	outline_check.button_pressed = GameSettings.crosshair_outline
 	outline_check.toggled.connect(_on_crosshair_outline_toggled)
 	_add_row("Contour noir", outline_check)
+	_crosshair_outline_check = outline_check
+
+
+func _on_crosshair_preset_selected(index: int, option: OptionButton) -> void:
+	if index <= 0:
+		return
+	var code: String = GameSettings.CROSSHAIR_PRESETS.get(option.get_item_text(index), "")
+	_apply_crosshair_code(code, "Préréglage appliqué : modifie-le librement ci-dessous.")
+	option.select(0)
+
+
+func _on_crosshair_code_submitted(_text: String) -> void:
+	_on_crosshair_import_pressed()
+
+
+func _on_crosshair_import_pressed() -> void:
+	_apply_crosshair_code(_crosshair_code_edit.text, "Réticule importé.")
+
+
+func _on_crosshair_export_pressed() -> void:
+	var code: String = GameSettings.crosshair_to_code()
+	DisplayServer.clipboard_set(code)
+	_crosshair_code_edit.text = code
+	_crosshair_status.text = "Code copié dans le presse-papiers."
+
+
+## Applique un code de réticule et met à jour tous les champs de l'éditeur.
+func _apply_crosshair_code(code: String, success_message: String) -> void:
+	var valid: bool = GameSettings.crosshair_from_code(code)
+	if not valid:
+		_crosshair_status.text = "Code invalide : il doit commencer par KA1 et compter 9 champs séparés par « ; »."
+		return
+	_updating = true
+	for property: Variant in _crosshair_spins:
+		var spin := _crosshair_spins[property] as SpinBox
+		var current: float = GameSettings.get(str(property))
+		spin.value = current
+	_crosshair_style_option.select(GameSettings.crosshair_style)
+	_crosshair_color_button.color = GameSettings.crosshair_color
+	_crosshair_outline_check.set_pressed_no_signal(GameSettings.crosshair_outline)
+	_updating = false
+	_crosshair_status.text = success_message
+	_commit_crosshair()
 
 
 func _add_crosshair_spin(caption: String, property: StringName, minimum: float, maximum: float, step: float, suffix: String) -> void:
@@ -364,9 +464,12 @@ func _add_crosshair_spin(caption: String, property: StringName, minimum: float, 
 	var spin := _make_spin(minimum, maximum, step, current, suffix)
 	spin.value_changed.connect(_on_crosshair_value_changed.bind(property))
 	_add_row(caption, spin)
+	_crosshair_spins[property] = spin
 
 
 func _on_crosshair_value_changed(value: float, property: StringName) -> void:
+	if _updating:
+		return
 	GameSettings.set(property, value)
 	_commit_crosshair()
 

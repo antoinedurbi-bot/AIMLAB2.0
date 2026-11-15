@@ -36,16 +36,20 @@ const FULL_SPEED_RATIO := 0.85
 const MIN_MOVING_SPREAD_DEG := 1.2
 const MAX_MOVING_SPREAD_DEG := 5.0
 
-## Profil d'arme générique (fusil automatique). Ajuste ces valeurs à ta convenance.
-## Intervalle entre deux balles en tir automatique (s) : 0,1 s = 600 coups/min.
-const FIRE_INTERVAL := 0.1
+const Weapons := preload("res://scripts/weapons.gd")
+
 ## Délai sans tirer au bout duquel la rafale repart de zéro (s).
 const SPRAY_RESET_SECONDS := 0.4
-## Montée verticale par balle (°) pendant les premières balles, et plafond.
-const RECOIL_CLIMB_PER_SHOT := 0.6
-const RECOIL_CLIMB_SHOTS := 8
-## Amplitude (°) du balancement horizontal une fois le plafond atteint.
-const RECOIL_SWAY_DEG := 1.5
+## Accroupi : hauteur des yeux, vitesse, et recul multiplié par ce facteur.
+const STAND_EYE_HEIGHT := 1.7
+const CROUCH_EYE_HEIGHT := 1.15
+const CROUCH_SPEED := 2.4
+const CROUCH_RECOIL_FACTOR := 0.8
+const JUMP_VELOCITY := 6.2
+## Au-dessus de cette vitesse les pas s'entendent ; distance entre deux pas (m).
+const LOUD_SPEED := 3.3
+const STEP_DISTANCE := 2.3
+const KEY_BIT_CROUCH := 32
 
 ## Bits du masque de touches transmis à la télémétrie.
 const KEY_BIT_FORWARD := 1
@@ -87,6 +91,12 @@ var _key_left: bool = false
 var _key_right: bool = false
 var _key_walk: bool = false
 var _trigger_held: bool = false
+var _key_crouch: bool = false
+var _step_distance: float = 0.0
+## Profil de l'arme en main (voir scripts/weapons.gd).
+var weapon: Dictionary = {}
+## Distance parcourue en faisant du bruit depuis le début de la session (m).
+var loud_distance: float = 0.0
 var _next_shot_usec: int = 0
 var _last_shot_usec: int = 0
 var _spray_index: int = 0
@@ -112,18 +122,22 @@ func _input(event: InputEvent) -> void:
 		var button := event as InputEventMouseButton
 		if button.button_index == MOUSE_BUTTON_LEFT:
 			_trigger_held = button.pressed
-			if fire_enabled and button.pressed:
+			if fire_enabled and button.pressed and Time.get_ticks_usec() >= _next_shot_usec:
 				_fire()
-				_next_shot_usec = Time.get_ticks_usec() + int(FIRE_INTERVAL * 1000000.0)
+				_next_shot_usec = Time.get_ticks_usec() + int(_fire_interval() * 1000000.0)
 	elif event is InputEventKey:
 		var key := event as InputEventKey
 		if not key.echo:
 			_handle_key(key.physical_keycode, key.pressed)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	# Accroupissement : la caméra descend ou remonte progressivement.
+	var eye_height := CROUCH_EYE_HEIGHT if _key_crouch and move_enabled else STAND_EYE_HEIGHT
+	pivot.position.y = move_toward(pivot.position.y, eye_height, 5.0 * delta)
 	# Tir automatique : une balle par intervalle tant que le clic est maintenu.
-	if not automatic or not _trigger_held or not fire_enabled:
+	var weapon_automatic: bool = weapon.get("automatic", true)
+	if not automatic or not weapon_automatic or not _trigger_held or not fire_enabled:
 		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		_trigger_held = false
@@ -131,7 +145,7 @@ func _process(_delta: float) -> void:
 	var now := Time.get_ticks_usec()
 	if now >= _next_shot_usec:
 		_fire()
-		_next_shot_usec = maxi(_next_shot_usec + int(FIRE_INTERVAL * 1000000.0), now)
+		_next_shot_usec = maxi(_next_shot_usec + int(_fire_interval() * 1000000.0), now)
 
 
 func _physics_process(delta: float) -> void:
@@ -152,6 +166,8 @@ func _physics_process(delta: float) -> void:
 	if strafe != 0.0 or advance != 0.0:
 		var wish_direction: Vector3 = (global_transform.basis * Vector3(strafe, 0.0, advance)).normalized()
 		var wish_speed := WALK_SPEED if _key_walk else RUN_SPEED
+		if _key_crouch:
+			wish_speed = CROUCH_SPEED
 		var missing := wish_speed - horizontal.dot(wish_direction)
 		if missing > 0.0:
 			horizontal += wish_direction * minf(GROUND_ACCELERATION * wish_speed * delta, missing)
@@ -159,12 +175,19 @@ func _physics_process(delta: float) -> void:
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 	if is_on_floor():
-		velocity.y = 0.0
+		velocity.y = maxf(velocity.y, 0.0)
 	else:
 		velocity.y -= GRAVITY * delta
 	move_and_slide()
 
 	var current_speed := horizontal_speed()
+	# Bruits de pas : courir s'entend, marcher ou s'accroupir non.
+	if current_speed > LOUD_SPEED and is_on_floor():
+		loud_distance += current_speed * delta
+		_step_distance += current_speed * delta
+		if _step_distance >= STEP_DISTANCE:
+			_step_distance = 0.0
+			Sfx.play(&"step")
 	if current_speed >= RUN_SPEED * FULL_SPEED_RATIO:
 		last_full_speed_usec = Time.get_ticks_usec()
 		var lateral := lateral_velocity()
@@ -189,6 +212,7 @@ func reset_view() -> void:
 ## (0 = vers -Z, positif = vers la gauche), à l'arrêt.
 func teleport(world_position: Vector3, facing_yaw_deg: float) -> void:
 	global_position = world_position
+	loud_distance = 0.0
 	velocity = Vector3.ZERO
 	yaw_deg = facing_yaw_deg
 	pitch_deg = 0.0
@@ -211,6 +235,7 @@ func reset_input() -> void:
 	right_press_usec = 0
 	right_release_usec = 0
 	_trigger_held = false
+	_key_crouch = false
 	_spray_index = 0
 	automatic = false
 	recoil_enabled = false
@@ -241,13 +266,32 @@ func aim_collider() -> Object:
 
 
 ## Décalage du recul (°) pour la balle numéro `index` d'une rafale : montée
-## régulière, puis balancement horizontal autour du plafond.
+## régulière, puis balancement horizontal autour du plafond. Réduit accroupi.
 func recoil_offset(index: int) -> Vector2:
-	var climb := RECOIL_CLIMB_PER_SHOT * float(mini(index, RECOIL_CLIMB_SHOTS))
+	var climb_step: float = weapon.get("climb", 0.6)
+	var climb_shots: int = weapon.get("climb_shots", 8)
+	var sway_amplitude: float = weapon.get("sway", 1.5)
+	var climb := climb_step * float(mini(index, climb_shots))
 	var sway := 0.0
-	if index > RECOIL_CLIMB_SHOTS - 3:
-		sway = sin(float(index - RECOIL_CLIMB_SHOTS + 3) * 0.7) * RECOIL_SWAY_DEG
-	return Vector2(sway, climb)
+	if index > climb_shots - 3:
+		sway = sin(float(index - climb_shots + 3) * 0.7) * sway_amplitude
+	var factor := CROUCH_RECOIL_FACTOR if _key_crouch else 1.0
+	return Vector2(sway, climb) * factor
+
+
+## Dégâts de l'arme en main sur une cible à 100 points de vie.
+func weapon_damage(head: bool) -> float:
+	var amount: float = weapon.get("head" if head else "body", 150.0 if head else 40.0)
+	return amount
+
+
+func is_crouching() -> bool:
+	return _key_crouch
+
+
+func _fire_interval() -> float:
+	var interval: float = weapon.get("interval", 0.1)
+	return interval
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +300,7 @@ func recoil_offset(index: int) -> Vector2:
 
 func _refresh_settings() -> void:
 	_degrees_per_count = GameSettings.degrees_per_count()
+	weapon = Weapons.get_profile(GameSettings.weapon)
 	camera.fov = GameSettings.vertical_fov()
 
 
@@ -317,6 +362,13 @@ func _handle_key(physical_keycode: Key, pressed: bool) -> void:
 		KEY_SHIFT:
 			_key_walk = pressed
 			label = "walk"
+		KEY_CTRL:
+			_key_crouch = pressed
+			label = "crouch"
+		KEY_SPACE:
+			if pressed and move_enabled and is_on_floor():
+				velocity.y = JUMP_VELOCITY
+			label = "jump"
 		_:
 			return
 
@@ -331,6 +383,8 @@ func _handle_key(physical_keycode: Key, pressed: bool) -> void:
 		mask |= KEY_BIT_RIGHT
 	if _key_walk:
 		mask |= KEY_BIT_WALK
+	if _key_crouch:
+		mask |= KEY_BIT_CROUCH
 	Telemetry.input_mask = mask
 	Telemetry.log_event("key", {"key": label, "pressed": pressed, "speed": horizontal_speed()})
 
@@ -342,8 +396,10 @@ func _handle_key(physical_keycode: Key, pressed: bool) -> void:
 func _fire() -> void:
 	var speed := horizontal_speed()
 	var deviation := Vector2.ZERO
-	if movement_inaccuracy and speed > ACCURATE_SPEED:
-		var excess := clampf((speed - ACCURATE_SPEED) / (RUN_SPEED - ACCURATE_SPEED), 0.0, 1.0)
+	var airborne := move_enabled and not is_on_floor()
+	if movement_inaccuracy and (speed > ACCURATE_SPEED or airborne):
+		# En l'air, le tir est aussi imprécis qu'à pleine vitesse.
+		var excess := 1.0 if airborne else clampf((speed - ACCURATE_SPEED) / (RUN_SPEED - ACCURATE_SPEED), 0.0, 1.0)
 		var spread := lerpf(MIN_MOVING_SPREAD_DEG, MAX_MOVING_SPREAD_DEG, excess)
 		deviation = Vector2.from_angle(randf() * TAU) * (spread * sqrt(randf()))
 
@@ -377,6 +433,8 @@ func _fire() -> void:
 		"accurate": speed <= ACCURATE_SPEED,
 		"deviation": deviation,
 		"spray_index": spray_index,
+		"crouched": _key_crouch,
+		"airborne": airborne,
 		"lateral_velocity": lateral_velocity(),
 		"walking": _key_walk,
 		"last_full_speed_usec": last_full_speed_usec,

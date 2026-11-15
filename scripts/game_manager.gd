@@ -90,8 +90,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			GameSettings.commit_graphics()
 			get_viewport().set_input_as_handled()
 		elif key.physical_keycode == KEY_SPACE and state == State.PLAYING and _drill != null:
+			# ESPACE valide une action d'exercice ; le saut est géré par le joueur.
 			_drill.on_action()
-			get_viewport().set_input_as_handled()
 
 
 func _notification(what: int) -> void:
@@ -220,6 +220,8 @@ func _finish_session() -> void:
 	_drill.finalize(report)
 
 	report["map"] = _chosen_map_name
+	report["weapon"] = GameSettings.weapon
+	report["loud_distance_m"] = player.loud_distance
 	# Difficulté adaptative et avancement de la routine du jour.
 	if report.has("success_ratio"):
 		var success: float = report.get("success_ratio", 0.5)

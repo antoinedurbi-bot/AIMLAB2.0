@@ -14,6 +14,9 @@ const HUMANOID_SCENE: PackedScene = preload("res://scenes/humanoid_target.tscn")
 var base_time_limit: float = 2.6
 var respawn_delay: float = 0.6
 var strafe_half_width: float = 6.0
+## Décalage en profondeur de la cible (négatif = plus loin) et facteur sur sa vitesse.
+var enemy_depth: float = 0.0
+var strafe_scale: float = 1.0
 
 var _enemy: Humanoid
 var _enemy_spawn_usec: int = 0
@@ -29,6 +32,8 @@ var _body_hits: int = 0
 var _headshot_kills: int = 0
 var _kill_times: PackedFloat32Array = PackedFloat32Array()
 var _bullets_per_kill: PackedFloat32Array = PackedFloat32Array()
+var _bursts: int = 0
+var _crouched_shots: int = 0
 
 
 func uses_movement() -> bool:
@@ -73,6 +78,10 @@ func on_shot(collider: Object, hit_position: Vector3, hit_normal: Vector3, shot:
 	shots += 1
 	var speed: float = shot.get("speed", 0.0)
 	var details := {"spray_index": shot.get("spray_index", 0), "deviation": shot.get("deviation", Vector2.ZERO)}
+	if int(shot.get("spray_index", 0)) == 0:
+		_bursts += 1
+	if bool(shot.get("crouched", false)):
+		_crouched_shots += 1
 	if _enemy == null:
 		Telemetry.record_shot(false, Vector3.ZERO, 0.0, -1, speed, details)
 		return
@@ -96,7 +105,7 @@ func on_shot(collider: Object, hit_position: Vector3, hit_normal: Vector3, shot:
 		_body_hits += 1
 	hud.flash_hit()
 	Sfx.play(&"hit")
-	if _enemy.apply_hit(head):
+	if _enemy.apply_damage(player.weapon_damage(head)):
 		_register_win(head, shot)
 
 
@@ -113,6 +122,8 @@ func finalize(report: Dictionary) -> void:
 	report["avg_duel_time_ms"] = Stats.mean(_kill_times)
 	report["bullets_per_kill"] = Stats.mean(_bullets_per_kill)
 	report["duel_time_limit_s"] = _time_limit
+	report["avg_burst_length"] = float(shots) / float(maxi(_bursts, 1))
+	report["crouched_shot_rate"] = Stats.percent(_crouched_shots, shots)
 	report["difficulty_level"] = difficulty
 	report["success_ratio"] = win_rate / 100.0
 
@@ -125,6 +136,8 @@ func finalize(report: Dictionary) -> void:
 	add_shooting_kpis(report)
 	add_kpi(report, "TIRS EN MOUVEMENT", "%d %%" % roundi(Stats.percent(int(report.get("shots_moving", 0)), shots)) if shots > 0 else "—",
 			"déviés car tirés au-dessus de %.1f m/s" % PlayerController.ACCURATE_SPEED)
+	add_kpi(report, "LONGUEUR DES RAFALES", "%.1f balles" % (float(shots) / float(maxi(_bursts, 1))) if shots > 0 else "—",
+			"%d %% des tirs accroupi" % roundi(Stats.percent(_crouched_shots, shots)))
 	add_kpi(report, "NIVEAU DE DIFFICULTÉ", "× %.2f" % difficulty, "s'ajuste à chaque session")
 	set_chart(report, "TEMPS POUR ÉLIMINER PAR DUEL GAGNÉ (ms)", _kill_times, "ms", _time_limit * 600.0, true)
 	set_panels(report, ["chart", "heatmap"])
@@ -136,10 +149,10 @@ func _spawn_enemy() -> void:
 	var enemy := HUMANOID_SCENE.instantiate() as Humanoid
 	enemy.target_id = _next_target_id
 	_next_target_id += 1
-	enemy.strafe_speed = 5.4 * clampf(difficulty, 0.7, 1.4)
+	enemy.strafe_speed = 5.4 * strafe_scale * clampf(difficulty, 0.7, 1.4)
 	enemy.min_x = _lane_center.x - strafe_half_width
 	enemy.max_x = _lane_center.x + strafe_half_width
-	enemy.position = _lane_center + Vector3(rng.randf_range(-strafe_half_width, strafe_half_width), 0.0, rng.randf_range(-2.0, 3.0))
+	enemy.position = _lane_center + Vector3(rng.randf_range(-strafe_half_width, strafe_half_width), 0.0, enemy_depth + rng.randf_range(-2.0, 3.0))
 	add_child(enemy)
 	_enemy = enemy
 	_enemy_spawn_usec = Time.get_ticks_usec()

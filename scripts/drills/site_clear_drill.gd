@@ -11,7 +11,16 @@ var retake: bool = false
 ## Distance minimale entre deux cibles (m).
 var min_spacing: float = 4.0
 
+## Si > 0 : une charge explose après ce délai (s). Il faut nettoyer le site puis
+## la désamorcer (ESPACE, immobile au centre du site pendant `defuse_seconds`).
+var charge_seconds: float = 0.0
+var defuse_seconds: float = 7.0
+var defuse_radius: float = 4.0
+
 var _site: String = ""
+var _defusing: bool = false
+var _defuse_progress: float = 0.0
+var _defused: bool = false
 
 
 func spawn_marker() -> String:
@@ -43,15 +52,69 @@ func setup() -> void:
 			_targets.append(spawn_target(candidate, target_radius))
 	angle_count = placed.size()
 
+	if charge_seconds > 0.0:
+		duration = charge_seconds
 	var action := "Reprends" if retake else "Attaque"
 	hud.set_objective("%s le site %s (lettre magenta au-dessus du site) : %d cibles à hauteur de tête y sont cachées." % [action, _site, angle_count])
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("SITE %s" % _site, "0 / %d" % angle_count)
+	if charge_seconds > 0.0:
+		hud.set_objective("Charge posée sur le site %s : nettoie-le (%d cibles), puis ESPACE au centre du site, immobile %d s. Explosion à %d s." % [
+			_site, angle_count, roundi(defuse_seconds), roundi(charge_seconds)])
+
+
+func update(delta: float) -> void:
+	super.update(delta)
+	if charge_seconds <= 0.0 or not _defusing:
+		return
+	var away := player.global_position.distance_to(marker("Site" + _site)) > defuse_radius
+	if away or player.horizontal_speed() > 0.6:
+		_defusing = false
+		_defuse_progress = 0.0
+		hud.show_feedback("DÉSAMORÇAGE INTERROMPU", Hud.COLOR_BAD)
+		return
+	_defuse_progress += delta
+	hud.set_side_stat("DÉSAMORÇAGE", "%.1f / %.0f s" % [_defuse_progress, defuse_seconds])
+	if _defuse_progress >= defuse_seconds:
+		_defused = true
+		_finish_time = elapsed
+		score += 300 + roundi(maxf(charge_seconds - elapsed, 0.0) * 10.0)
+		hud.show_feedback("CHARGE DÉSAMORCÉE", Hud.COLOR_GOOD)
+		Sfx.play(&"success")
+		finished = true
+
+
+func on_action() -> void:
+	if charge_seconds <= 0.0 or _defusing or _defused:
+		return
+	if _cleared < angle_count:
+		hud.show_feedback("SITE NON NETTOYÉ · %d cibles restantes" % (angle_count - _cleared), Hud.COLOR_BAD)
+	elif player.global_position.distance_to(marker("Site" + _site)) > defuse_radius:
+		hud.show_feedback("TROP LOIN · rejoins le centre du site", Hud.COLOR_INFO)
+	else:
+		_defusing = true
+		_defuse_progress = 0.0
+		Sfx.play(&"beep")
+		Telemetry.log_event("defuse_start", {"elapsed": elapsed})
+
+
+func on_shot(collider: Object, hit_position: Vector3, hit_normal: Vector3, shot: Dictionary) -> void:
+	super.on_shot(collider, hit_position, hit_normal, shot)
+	# Avec une charge, nettoyer le site ne termine pas la session : il reste à désamorcer.
+	if charge_seconds > 0.0 and not _defused:
+		finished = false
 
 
 func finalize(report: Dictionary) -> void:
 	super.finalize(report)
 	report["site"] = _site
+	if charge_seconds > 0.0:
+		report["charge_seconds"] = charge_seconds
+		report["defused"] = _defused
+		report["defuse_margin_s"] = charge_seconds - elapsed if _defused else 0.0
+		report["course_completed"] = _defused
+		add_kpi(report, "CHARGE", "DÉSAMORCÉE" if _defused else "EXPLOSÉE",
+				"%.1f s de marge" % (charge_seconds - elapsed) if _defused else "site nettoyé à %d / %d" % [_cleared, angle_count])
 
 
 func _choose_site() -> void:

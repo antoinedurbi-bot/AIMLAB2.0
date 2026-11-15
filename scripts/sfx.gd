@@ -22,6 +22,7 @@ func _ready() -> void:
 	_streams[&"go"] = _make_tone(880.0, 1320.0, 0.2, 0.45, 10.0)
 	_streams[&"success"] = _make_tone(700.0, 1500.0, 0.22, 0.45, 9.0)
 	_streams[&"fail"] = _make_tone(420.0, 140.0, 0.28, 0.45, 8.0)
+	_streams[&"step"] = _make_tone(150.0, 90.0, 0.06, 0.3, 45.0)
 	for index in VOICES:
 		var player := AudioStreamPlayer.new()
 		add_child(player)
@@ -40,6 +41,11 @@ func play(sound: StringName, pitch: float = 1.0) -> void:
 	player.stream = stream
 	player.pitch_scale = pitch
 	player.play()
+
+
+## Flux audio d'un son, pour le jouer ailleurs (par exemple en 3D).
+func get_stream(sound: StringName) -> AudioStream:
+	return _streams.get(sound) as AudioStream
 
 
 func _apply_volume() -> void:

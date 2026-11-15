@@ -7,9 +7,9 @@ extends RefCounted
 ## Exercices qui travaillent chaque compétence du diagnostic, par ordre de priorité.
 const SKILL_DRILLS := {
 	"flick": ["gridshot", "microflick"],
-	"tracking": ["duel", "microflick"],
-	"reaction": ["angle_hold", "duel"],
-	"spray": ["duel", "counter_strafe"],
+	"tracking": ["duel", "multi_target"],
+	"reaction": ["angle_hold", "peek_duel"],
+	"spray": ["multi_target", "tap_burst"],
 }
 ## Durée comptée par session, compte à rebours et lecture du rapport compris (minutes).
 const MINUTES_PER_SESSION := 1.5

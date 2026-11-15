@@ -57,6 +57,26 @@ Perdre le focus de la fenêtre pendant une session l'annule (les statistiques se
 - **Arme** : profil générique réglable en tête de `scripts/player.gd` (cadence, montée et
   balancement du recul). Ce ne sont pas les valeurs d'un jeu précis.
 
+## Combat, déplacement avancé et réticule
+
+- **Armes** (`scripts/weapons.gd`) : fusil automatique, mitraillette, pistolet semi-automatique,
+  avec cadence, recul et dégâts propres. Profils génériques, choisis dans le menu.
+- **Accroupi (Ctrl)** : caméra plus basse, déplacement lent, recul réduit de 20 %.
+  **Saut (Espace)** : un tir en l'air est aussi imprécis qu'à pleine vitesse.
+- **Bruits de pas** : courir s'entend, marcher ou s'accroupir non ; la distance parcourue en
+  faisant du bruit est enregistrée.
+- **Tap et rafales** : cible lointaine, longueur moyenne des rafales mesurée.
+- **Duel d'angle** : l'adversaire riposte après un délai de réaction ; exposition, sortie serrée
+  ou large, re-sorties.
+- **Cibles multiples** : vagues de trois silhouettes ; temps de transfert, transferts dans la
+  même rafale.
+- **Localisation au son** : signal spatialisé à situer ; erreur angulaire, confusions
+  gauche / droite et avant / arrière.
+- **Désamorçage** : reprise de site avec une charge de 45 s à désamorcer en 7 s.
+- **Réticule** : préréglages, éditeur, et un code texte (`KA1;forme;couleur;longueur;épaisseur;
+  écart;point;contour;opacité`) pour exporter (copie dans le presse-papiers) ou importer.
+  Ce format est propre à l'application.
+
 ## Exercices
 
 | Exercice | Ce qu'il travaille | Carte | Mesures principales |
