@@ -27,6 +27,8 @@ var _kill_intervals: PackedFloat32Array = PackedFloat32Array()
 
 
 func setup() -> void:
+	# Difficulté adaptative : les cibles rétrécissent quand le niveau monte.
+	target_radius /= sqrt(difficulty)
 	hud.set_objective("Détruis les sphères le plus vite possible.")
 	_fill_grid()
 
@@ -60,6 +62,10 @@ func finalize(report: Dictionary) -> void:
 	var misses: int = report.get("misses", 0)
 
 	report["ttk_consistency_ms"] = Stats.deviation(_kill_intervals)
+	report["difficulty_level"] = difficulty
+	# Réussite : précision, plafonnée par la cadence (1,5 cible/s = cadence pleine).
+	var accuracy_ratio: float = report.get("accuracy", 0.0)
+	report["success_ratio"] = accuracy_ratio / 100.0 * clampf(kills_per_second / 1.5, 0.0, 1.0) + 0.25
 	add_shooting_kpis(report)
 	add_kpi(report, "TEMPS MOYEN ENTRE CIBLES", "%d ms" % roundi(avg_ttk) if hit_count > 1 else "—",
 			"médiane %d ms · record %d ms" % [roundi(median_ttk), roundi(best_ttk)])

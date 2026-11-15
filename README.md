@@ -38,6 +38,25 @@ godot --path .
 
 Perdre le focus de la fenêtre pendant une session l'annule (les statistiques seraient faussées).
 
+## Diagnostic, routine et difficulté adaptative
+
+- **Diagnostic (2 minutes)** : quatre épreuves de 27 s — flick, tracking, réaction, contrôle du
+  spray — notées sur 100 (barèmes en tête de `scripts/drills/benchmark_drill.gd`). La note la
+  plus basse désigne la priorité. Les résultats sont enregistrés dans `user://profile.json` par
+  l'autoload `PlayerProfile`.
+- **Routine du jour** : `scripts/training_plan.gd` construit une routine d'environ 25 minutes à
+  partir du dernier diagnostic (le point faible reçoit le plus de sessions, plus un socle fixe :
+  arrêt avant le tir, placement du viseur, tenue d'angle). Le menu affiche l'avancement et un
+  bouton lance la session suivante.
+- **Difficulté adaptative** : chaque exercice qui publie un taux de réussite (`success_ratio`)
+  voit son niveau monter de 8 % au-dessus de 75 % de réussite et baisser de 7 % en dessous de
+  45 %. Aujourd'hui : Gridshot et Microflicks (cibles plus petites) et Duel (cible plus rapide,
+  temps plus court).
+- **Duel** : cible humanoïde (`scenes/humanoid_target.tscn`) qui strafe de façon erratique avec
+  de brefs arrêts ; tête en un tir, corps en trois ; tir automatique avec recul.
+- **Arme** : profil générique réglable en tête de `scripts/player.gd` (cadence, montée et
+  balancement du recul). Ce ne sont pas les valeurs d'un jeu précis.
+
 ## Exercices
 
 | Exercice | Ce qu'il travaille | Carte | Mesures principales |

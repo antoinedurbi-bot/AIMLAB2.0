@@ -99,21 +99,50 @@ theme_type_variation = &"ValueLabel"
 theme_override_font_sizes/font_size = 26
 text = "—"
 
-[node name="CoachText" type="Label" parent="Margin/Root/CoachPanel/CoachBox"]
+[node name="FactRow" type="HBoxContainer" parent="Margin/Root/CoachPanel/CoachBox"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="FactTag" type="Label" parent="Margin/Root/CoachPanel/CoachBox/FactRow"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+size_flags_vertical = 0
+theme_type_variation = &"CaptionLabel"
+text = "CONSTAT"
+
+[node name="CoachText" type="Label" parent="Margin/Root/CoachPanel/CoachBox/FactRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
+size_flags_horizontal = 3
 text = "—"
 autowrap_mode = 3
 
-[node name="CoachSecondary" type="Label" parent="Margin/Root/CoachPanel/CoachBox"]
+[node name="ActionRow" type="HBoxContainer" parent="Margin/Root/CoachPanel/CoachBox"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="ActionTag" type="Label" parent="Margin/Root/CoachPanel/CoachBox/ActionRow"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+size_flags_vertical = 0
+theme_type_variation = &"CaptionLabel"
+theme_override_colors/font_color = Color(0, 0.9, 1, 1)
+text = "À FAIRE"
+
+[node name="CoachAction" type="Label" parent="Margin/Root/CoachPanel/CoachBox/ActionRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.66, 0.74, 0.85, 1)
-theme_override_font_sizes/font_size = 15
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 text = "—"
 autowrap_mode = 3
+
+[node name="CoachCards" type="HBoxContainer" parent="Margin/Root/CoachPanel/CoachBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
 
 [node name="KpiGrid" type="GridContainer" parent="Margin/Root"]
 unique_name_in_owner = true

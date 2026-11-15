@@ -9,6 +9,7 @@ signal play_requested(drill_id: String, map_path: String, map_name: String)
 signal quit_requested
 
 const DrillCatalog := preload("res://scripts/drills/drill_catalog.gd")
+const TrainingPlan := preload("res://scripts/training_plan.gd")
 
 const CROSSHAIR_STYLES := ["Croix", "Croix + point", "Point", "Cercle + point"]
 const QUALITY_LEVELS := ["Performance", "Qualité (SSAO, MSAA 4x)", "Ultra (+ SDFGI, SSR)"]
@@ -22,6 +23,11 @@ var _game_option: OptionButton
 var _game_sens_spin: SpinBox
 var _sens_summary: Label
 var _selected_drill: String = "gridshot"
+var _profile_label: Label
+var _routine_label: Label
+var _routine_button: Button
+var _next_routine_drill: String = ""
+var _drill_buttons: Dictionary = {}
 
 @onready var _play_button: Button = %PlayButton
 @onready var _quit_button: Button = %QuitButton
@@ -41,6 +47,7 @@ func _ready() -> void:
 	visibility_changed.connect(_on_visibility_changed)
 	_map_option.item_selected.connect(_on_map_selected)
 	_build_drill_list()
+	_build_profile_section()
 	_build_sensitivity_section()
 	_build_crosshair_section()
 	_build_graphics_section()
@@ -62,6 +69,7 @@ func _on_quit_pressed() -> void:
 func _on_visibility_changed() -> void:
 	if is_visible_in_tree():
 		_refresh_drill_stats()
+		_refresh_profile()
 		_play_button.grab_focus.call_deferred()
 
 
@@ -86,6 +94,7 @@ func _build_drill_list() -> void:
 		button.set_pressed_no_signal(drill_id == _selected_drill)
 		button.pressed.connect(_on_drill_pressed.bind(drill_id))
 		_drill_grid.add_child(button)
+		_drill_buttons[drill_id] = button
 	_show_drill(_selected_drill)
 
 
@@ -139,6 +148,77 @@ func _refresh_drill_stats() -> void:
 	else:
 		var best: int = SessionHistory.best_score(_history_key())
 		_mode_stats.text = "%d sessions enregistrées · record : %d points" % [sessions, best]
+
+
+# ---------------------------------------------------------------------------
+# Profil et routine du jour
+# ---------------------------------------------------------------------------
+
+func _build_profile_section() -> void:
+	_add_section("PROFIL ET ROUTINE DU JOUR")
+	_profile_label = Label.new()
+	_profile_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_settings_list.add_child(_profile_label)
+	_routine_label = Label.new()
+	_routine_label.theme_type_variation = &"CaptionLabel"
+	_routine_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_settings_list.add_child(_routine_label)
+	_routine_button = Button.new()
+	_routine_button.pressed.connect(_on_routine_pressed)
+	_settings_list.add_child(_routine_button)
+
+
+## Met à jour les notes du diagnostic et la liste des sessions restantes aujourd'hui.
+func _refresh_profile() -> void:
+	if _profile_label == null:
+		return
+	var has_benchmark: bool = PlayerProfile.has_benchmark()
+	var ordered: Array[String] = PlayerProfile.skills_by_weakness()
+	if has_benchmark:
+		var latest: Dictionary = PlayerProfile.latest_benchmark()
+		var notes := PackedStringArray()
+		for skill: String in PlayerProfile.SKILLS:
+			var note: float = latest.get(skill, 0.0)
+			notes.append("%s %d" % [PlayerProfile.skill_name(skill), roundi(note)])
+		var overall: float = latest.get("overall", 0.0)
+		_profile_label.text = "Diagnostic : %s (moyenne %d / 100)\nPriorité : %s" % [
+			"  ·  ".join(notes), roundi(overall), PlayerProfile.skill_name(ordered[0])]
+	else:
+		_profile_label.text = "Aucun diagnostic. Passe-le (2 minutes) pour obtenir une routine adaptée à ton point faible."
+
+	var plan: Array[Dictionary] = TrainingPlan.build(ordered, has_benchmark)
+	var lines := PackedStringArray()
+	_next_routine_drill = ""
+	for item in plan:
+		var drill_id: String = item.get("drill_id", "")
+		var wanted: int = item.get("sessions", 0)
+		var done: int = mini(PlayerProfile.sessions_today(drill_id), wanted)
+		var entry: Dictionary = DrillCatalog.find(drill_id)
+		var mark := "✓" if done >= wanted else "○"
+		lines.append("%s  %s — %d / %d sessions · %s" % [mark, entry.get("title", drill_id), done, wanted, item.get("reason", "")])
+		if done < wanted and _next_routine_drill == "":
+			_next_routine_drill = drill_id
+	_routine_label.text = "Routine du jour (environ %d min)\n%s" % [roundi(TrainingPlan.total_minutes(plan)), "\n".join(lines)]
+
+	if not has_benchmark:
+		_routine_button.text = "PASSER LE DIAGNOSTIC (2 MIN)"
+		_next_routine_drill = "benchmark"
+	elif _next_routine_drill == "":
+		_routine_button.text = "ROUTINE TERMINÉE · REFAIRE LE DIAGNOSTIC"
+		_next_routine_drill = "benchmark"
+	else:
+		var next_entry: Dictionary = DrillCatalog.find(_next_routine_drill)
+		_routine_button.text = "SUIVANT : %s" % next_entry.get("title", "")
+
+
+func _on_routine_pressed() -> void:
+	if _next_routine_drill == "":
+		return
+	var button := _drill_buttons.get(_next_routine_drill) as Button
+	if button != null:
+		button.button_pressed = true
+	_show_drill(_next_routine_drill)
+	_on_play_pressed()
 
 
 # ---------------------------------------------------------------------------

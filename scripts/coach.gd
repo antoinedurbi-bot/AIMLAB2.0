@@ -30,6 +30,10 @@ static func build_advice(drill_id: String, report: Dictionary, previous: Array[D
 			_jiggle_rules(advice, report)
 		"pre_aim", "site_attack", "site_retake":
 			_pre_aim_rules(advice, report)
+		"benchmark":
+			_benchmark_rules(advice, report)
+		"duel":
+			_duel_rules(advice, report)
 		"free_roam":
 			_add(advice, 50.0, "Carte reconnue",
 					"%d m parcourus. Enchaîne maintenant avec « Attaque de site » ou « Reprise de site » sur cette carte pour mettre les trajets à l'épreuve." % _count(report, "distance_moved_m"), TONE_INFO)
@@ -349,6 +353,65 @@ static func _timer_rules(advice: Array[Dictionary], report: Dictionary) -> void:
 	if mean_abs < 0.6 and absf(rate) < 4.0:
 		_add(advice, 36.0, "Horloge interne fiable",
 				"Erreur moyenne de %.2f s seulement. Tu peux te fier à ton décompte en partie : entretiens-le en comptant systématiquement à chaque pose." % mean_abs, TONE_GOOD)
+
+
+# ---------------------------------------------------------------------------
+# Diagnostic et duel
+# ---------------------------------------------------------------------------
+
+static func _benchmark_rules(advice: Array[Dictionary], report: Dictionary) -> void:
+	var names := {"flick": "le flick", "tracking": "le tracking", "reaction": "la réaction", "spray": "le contrôle du spray"}
+	var plans := {
+		"flick": "Fais Gridshot puis Microflicks en visant la précision avant la vitesse.",
+		"tracking": "Fais l'exercice Duel : suis la tête pendant les strafes au lieu d'attendre l'arrêt.",
+		"reaction": "Fais Tenue d'angle en regardant le bord du passage, pas ton viseur.",
+		"spray": "Fais l'exercice Duel en rafales de 4 à 6 balles, viseur tiré vers le bas dès la 3e.",
+	}
+	var weakest: String = str(report.get("bench_weakest", "flick"))
+	var lowest := _number(report, "bench_" + weakest)
+	_add(advice, 95.0, "Priorité : %s" % str(names.get(weakest, weakest)),
+			"C'est ta note la plus basse : %d / 100, pour une moyenne de %d. %s La routine du jour, dans le menu, lui consacre le plus de sessions." % [
+				roundi(lowest), roundi(_number(report, "bench_overall")), str(plans.get(weakest, ""))], TONE_FIX)
+	if _count(report, "bench_reaction_premature") >= 3:
+		_add(advice, 70.0, "Tu anticipes au lieu de réagir",
+				"%d tirs partis avant l'apparition de la cible. Chacun coûte 5 points de note, et en partie il révèle ta position. Garde le doigt posé et ne presse qu'à la vue de la cible." % _count(report, "bench_reaction_premature"), TONE_FIX)
+	if _count(report, "bench_spray_bullets") < 12:
+		_add(advice, 65.0, "Épreuve de spray non notée",
+				"Moins de 12 balles tirées en rafale. Maintiens le clic pour des rafales de 8 à 10 balles : c'est la tenue du recul qui est mesurée, pas le premier tir.", TONE_INFO)
+	var best_skill := "flick"
+	for skill: String in names:
+		if _number(report, "bench_" + skill) > _number(report, "bench_" + best_skill):
+			best_skill = skill
+	_add(advice, 30.0, "Point fort : %s" % str(names.get(best_skill, best_skill)),
+			"%d / 100. Inutile d'y passer du temps cette semaine : entretiens-le avec l'échauffement." % roundi(_number(report, "bench_" + best_skill)), TONE_GOOD)
+
+
+static func _duel_rules(advice: Array[Dictionary], report: Dictionary) -> void:
+	var duels := _count(report, "duels")
+	var win_rate := _number(report, "duel_win_rate")
+	var headshots := _number(report, "headshot_rate")
+	var bullets := _number(report, "bullets_per_kill")
+	var shot_count := _count(report, "shots")
+	var moving := _count(report, "shots_moving")
+	if duels < 5:
+		_add(advice, 95.0, "Trop peu de duels",
+				"Seulement %d duels joués. Engage chaque cible dès qu'elle apparaît : il en faut une quinzaine pour un diagnostic." % duels, TONE_FIX)
+		return
+	if shot_count > 0 and moving * 100 >= shot_count * 30:
+		_add(advice, 88.0, "Tu tires en te déplaçant",
+				"%d %% de tes balles partent en mouvement et sont déviées. Arrête-toi d'une tape sur la touche opposée, tire ta rafale, puis repars." % roundi(100.0 * float(moving) / float(shot_count)), TONE_FIX)
+	if headshots < 25.0 and _count(report, "hits") >= 10:
+		_add(advice, 82.0, "Ton viseur est trop bas",
+				"Seulement %.0f %% de tes balles au but touchent la tête. Tiens le viseur à hauteur de tête en permanence : une tête élimine en un tir, le corps en demande trois." % headshots, TONE_FIX)
+	if bullets > 6.0:
+		_add(advice, 74.0, "Rafales trop longues",
+				"%.1f balles par élimination en moyenne. Au-delà de la 5e balle le recul t'emmène hors de la cible : coupe la rafale, replace le viseur, reprends." % bullets, TONE_FIX)
+	if win_rate < 50.0:
+		_add(advice, 78.0, "Tu perds le duel au temps",
+				"%.0f %% de duels gagnés. Ne suis pas tous les strafes : attends l'arrêt bref de la cible ou son demi-tour, c'est là que sa tête est immobile." % win_rate, TONE_FIX)
+	elif win_rate >= 80.0:
+		_add(advice, 36.0, "Duels maîtrisés à ce niveau",
+				"%.0f %% de duels gagnés : la difficulté monte pour la prochaine session (cible plus rapide, temps plus court)." % win_rate, TONE_GOOD)
 
 
 # ---------------------------------------------------------------------------

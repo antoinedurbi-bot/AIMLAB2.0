@@ -24,7 +24,8 @@ const TONE_COLORS := {
 @onready var _score_trend: Label = %ScoreTrend
 @onready var _coach_title: Label = %CoachTitle
 @onready var _coach_text: Label = %CoachText
-@onready var _coach_secondary: Label = %CoachSecondary
+@onready var _coach_action: Label = %CoachAction
+@onready var _coach_cards: HBoxContainer = %CoachCards
 @onready var _kpi_grid: GridContainer = %KpiGrid
 @onready var _analysis: HBoxContainer = %Analysis
 @onready var _chart_panel: PanelContainer = %ChartPanel
@@ -117,26 +118,60 @@ func _fill_header(drill_title: String, report: Dictionary, previous: Array[Dicti
 
 
 func _fill_coach(advice: Array[Dictionary]) -> void:
+	for child in _coach_cards.get_children():
+		_coach_cards.remove_child(child)
+		child.queue_free()
 	if advice.is_empty():
 		_coach_title.text = "—"
 		_coach_text.text = ""
-		_coach_secondary.visible = false
+		_coach_action.text = ""
 		return
 	var main := advice[0]
 	var tone: String = main.get("tone", "info")
 	var tone_color: Color = TONE_COLORS.get(tone, Color.WHITE)
+	var parts := _split_advice(str(main.get("text", "")))
 	_coach_title.text = main.get("title", "")
 	_coach_title.add_theme_color_override(&"font_color", tone_color)
-	_coach_text.text = main.get("text", "")
+	_coach_text.text = parts[0]
+	_coach_action.text = parts[1] if parts[1] != "" else "Continue ainsi."
 
-	var extras := PackedStringArray()
+	# Pistes secondaires : une carte par conseil, côte à côte.
 	for index in range(1, advice.size()):
 		var item := advice[index]
-		var item_title: String = item.get("title", "")
-		var item_text: String = item.get("text", "")
-		extras.append("▸ %s — %s" % [item_title, item_text])
-	_coach_secondary.visible = not extras.is_empty()
-	_coach_secondary.text = "\n".join(extras)
+		var item_tone: String = item.get("tone", "info")
+		var item_color: Color = TONE_COLORS.get(item_tone, Color.WHITE)
+		var card := PanelContainer.new()
+		card.theme_type_variation = &"CardPanel"
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var box := VBoxContainer.new()
+		box.add_theme_constant_override(&"separation", 2)
+		card.add_child(box)
+		var title_label := Label.new()
+		title_label.text = str(item.get("title", ""))
+		title_label.add_theme_color_override(&"font_color", item_color)
+		title_label.add_theme_font_size_override(&"font_size", 17)
+		box.add_child(title_label)
+		var text_label := Label.new()
+		text_label.text = str(item.get("text", ""))
+		text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		text_label.custom_minimum_size.x = 300.0
+		text_label.add_theme_font_size_override(&"font_size", 14)
+		text_label.add_theme_color_override(&"font_color", Color(0.72, 0.79, 0.88))
+		box.add_child(text_label)
+		_coach_cards.add_child(card)
+	_coach_cards.visible = advice.size() > 1
+
+
+## Sépare un conseil en deux : le constat (première phrase, celle qui cite les
+## chiffres) et l'action à mener (la suite).
+func _split_advice(text: String) -> PackedStringArray:
+	var cut := text.find(". ")
+	var colon := text.find(" : ")
+	if colon >= 0 and (cut < 0 or colon < cut) and colon < 140:
+		return PackedStringArray([text.substr(0, colon) + ".", text.substr(colon + 3, 1).to_upper() + text.substr(colon + 4)])
+	if cut < 0:
+		return PackedStringArray([text, ""])
+	return PackedStringArray([text.substr(0, cut + 1), text.substr(cut + 2)])
 
 
 func _fill_kpis(report: Dictionary) -> void:

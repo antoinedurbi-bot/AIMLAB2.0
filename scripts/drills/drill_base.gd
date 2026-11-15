@@ -28,6 +28,8 @@ var drill_id: String = ""
 var title: String = ""
 ## Durée maximale de la session en secondes.
 var duration: float = 60.0
+## Niveau de difficulté adaptative fourni par le profil (1.0 = référence).
+var difficulty: float = 1.0
 
 var player: PlayerController
 var hud: Hud

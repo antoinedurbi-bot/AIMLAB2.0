@@ -36,6 +36,17 @@ const FULL_SPEED_RATIO := 0.85
 const MIN_MOVING_SPREAD_DEG := 1.2
 const MAX_MOVING_SPREAD_DEG := 5.0
 
+## Profil d'arme générique (fusil automatique). Ajuste ces valeurs à ta convenance.
+## Intervalle entre deux balles en tir automatique (s) : 0,1 s = 600 coups/min.
+const FIRE_INTERVAL := 0.1
+## Délai sans tirer au bout duquel la rafale repart de zéro (s).
+const SPRAY_RESET_SECONDS := 0.4
+## Montée verticale par balle (°) pendant les premières balles, et plafond.
+const RECOIL_CLIMB_PER_SHOT := 0.6
+const RECOIL_CLIMB_SHOTS := 8
+## Amplitude (°) du balancement horizontal une fois le plafond atteint.
+const RECOIL_SWAY_DEG := 1.5
+
 ## Bits du masque de touches transmis à la télémétrie.
 const KEY_BIT_FORWARD := 1
 const KEY_BIT_BACK := 2
@@ -51,6 +62,10 @@ var fire_enabled: bool = false
 var move_enabled: bool = false
 ## Dévie les tirs déclenchés en mouvement.
 var movement_inaccuracy: bool = false
+## Tir automatique tant que le clic est maintenu.
+var automatic: bool = false
+## Applique le recul (les balles montent puis se balancent pendant une rafale).
+var recoil_enabled: bool = false
 
 var yaw_deg: float = 0.0
 var pitch_deg: float = 0.0
@@ -71,6 +86,10 @@ var _key_back: bool = false
 var _key_left: bool = false
 var _key_right: bool = false
 var _key_walk: bool = false
+var _trigger_held: bool = false
+var _next_shot_usec: int = 0
+var _last_shot_usec: int = 0
+var _spray_index: int = 0
 
 @onready var pivot: Node3D = $Pivot
 @onready var camera: Camera3D = $Pivot/Camera3D
@@ -91,12 +110,28 @@ func _input(event: InputEvent) -> void:
 			_look(event as InputEventMouseMotion)
 	elif event is InputEventMouseButton:
 		var button := event as InputEventMouseButton
-		if fire_enabled and button.pressed and button.button_index == MOUSE_BUTTON_LEFT:
-			_fire()
+		if button.button_index == MOUSE_BUTTON_LEFT:
+			_trigger_held = button.pressed
+			if fire_enabled and button.pressed:
+				_fire()
+				_next_shot_usec = Time.get_ticks_usec() + int(FIRE_INTERVAL * 1000000.0)
 	elif event is InputEventKey:
 		var key := event as InputEventKey
 		if not key.echo:
 			_handle_key(key.physical_keycode, key.pressed)
+
+
+func _process(_delta: float) -> void:
+	# Tir automatique : une balle par intervalle tant que le clic est maintenu.
+	if not automatic or not _trigger_held or not fire_enabled:
+		return
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		_trigger_held = false
+		return
+	var now := Time.get_ticks_usec()
+	if now >= _next_shot_usec:
+		_fire()
+		_next_shot_usec = maxi(_next_shot_usec + int(FIRE_INTERVAL * 1000000.0), now)
 
 
 func _physics_process(delta: float) -> void:
@@ -175,6 +210,10 @@ func reset_input() -> void:
 	left_release_usec = 0
 	right_press_usec = 0
 	right_release_usec = 0
+	_trigger_held = false
+	_spray_index = 0
+	automatic = false
+	recoil_enabled = false
 	Telemetry.input_mask = 0
 
 
@@ -190,6 +229,25 @@ func lateral_velocity() -> float:
 ## Position des yeux dans le monde.
 func eye_position() -> Vector3:
 	return camera.global_position
+
+
+## Objet actuellement sous le viseur (sans tirer), ou null.
+func aim_collider() -> Object:
+	aim_ray.rotation = Vector3.ZERO
+	aim_ray.force_raycast_update()
+	if aim_ray.is_colliding():
+		return aim_ray.get_collider()
+	return null
+
+
+## Décalage du recul (°) pour la balle numéro `index` d'une rafale : montée
+## régulière, puis balancement horizontal autour du plafond.
+func recoil_offset(index: int) -> Vector2:
+	var climb := RECOIL_CLIMB_PER_SHOT * float(mini(index, RECOIL_CLIMB_SHOTS))
+	var sway := 0.0
+	if index > RECOIL_CLIMB_SHOTS - 3:
+		sway = sin(float(index - RECOIL_CLIMB_SHOTS + 3) * 0.7) * RECOIL_SWAY_DEG
+	return Vector2(sway, climb)
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +347,16 @@ func _fire() -> void:
 		var spread := lerpf(MIN_MOVING_SPREAD_DEG, MAX_MOVING_SPREAD_DEG, excess)
 		deviation = Vector2.from_angle(randf() * TAU) * (spread * sqrt(randf()))
 
+	# Rafale : l'index repart de zéro après une courte pause.
+	var fire_usec := Time.get_ticks_usec()
+	if float(fire_usec - _last_shot_usec) / 1000000.0 > SPRAY_RESET_SECONDS:
+		_spray_index = 0
+	var spray_index := _spray_index
+	_spray_index += 1
+	_last_shot_usec = fire_usec
+	if recoil_enabled:
+		deviation += recoil_offset(spray_index)
+
 	# Le rayon est dévié le temps du tir (x > 0 : vers la droite, y > 0 : vers le haut).
 	aim_ray.rotation = Vector3(deg_to_rad(deviation.y), deg_to_rad(-deviation.x), 0.0)
 	aim_ray.force_raycast_update()
@@ -308,6 +376,7 @@ func _fire() -> void:
 		"speed": speed,
 		"accurate": speed <= ACCURATE_SPEED,
 		"deviation": deviation,
+		"spray_index": spray_index,
 		"lateral_velocity": lateral_velocity(),
 		"walking": _key_walk,
 		"last_full_speed_usec": last_full_speed_usec,

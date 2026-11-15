@@ -129,6 +129,7 @@ func start_session(drill_id: String, chosen_map_path: String = "", chosen_map_na
 	drill.hud = hud
 	drill.fx = fx
 	drill.map_root = _map
+	drill.difficulty = PlayerProfile.difficulty(_drill_id)
 	var params: Dictionary = entry.get("params", {})
 	for key: Variant in params:
 		drill.set(str(key), params[key])
@@ -219,6 +220,11 @@ func _finish_session() -> void:
 	_drill.finalize(report)
 
 	report["map"] = _chosen_map_name
+	# Difficulté adaptative et avancement de la routine du jour.
+	if report.has("success_ratio"):
+		var success: float = report.get("success_ratio", 0.5)
+		report["next_difficulty_level"] = PlayerProfile.adjust_difficulty(_drill_id, success)
+	PlayerProfile.mark_session(_drill_id)
 	var previous: Array[Dictionary] = SessionHistory.recent(_history_key, HISTORY_WINDOW)
 	var advice: Array[Dictionary] = Coach.build_advice(_drill_id, report, previous)
 	if not advice.is_empty():

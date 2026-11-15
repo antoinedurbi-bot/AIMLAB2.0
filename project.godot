@@ -27,6 +27,7 @@ GameSettings="*res://scripts/settings_manager.gd"
 Telemetry="*res://scripts/telemetry_manager.gd"
 SessionHistory="*res://scripts/session_history.gd"
 Sfx="*res://scripts/sfx.gd"
+PlayerProfile="*res://scripts/player_profile.gd"
 
 [display]
 

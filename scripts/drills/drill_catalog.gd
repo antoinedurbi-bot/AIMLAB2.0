@@ -29,6 +29,28 @@ const TACTICAL_MAPS := [
 
 const DRILLS := [
 	{
+		"id": "benchmark",
+		"title": "DIAGNOSTIC",
+		"tag": "2 min",
+		"focus": "Évaluer flick, tracking, réaction et contrôle du spray",
+		"description": "Quatre mini-épreuves de 27 secondes notées sur 100. La note la plus basse désigne ta priorité, et la routine du jour s'y adapte. À refaire chaque semaine pour mesurer tes progrès.",
+		"map": MAP_RANGE,
+		"script": preload("res://scripts/drills/benchmark_drill.gd"),
+		"duration": 122.0,
+		"params": {},
+	},
+	{
+		"id": "duel",
+		"title": "DUEL",
+		"tag": "Combat",
+		"focus": "Éliminer une cible humanoïde qui strafe",
+		"description": "Une silhouette strafe de façon erratique et marque de brefs arrêts. Élimine-la avant la fin du temps imparti : tête en un tir, corps en trois. Tir automatique avec recul, imprécision en mouvement. La difficulté s'ajuste à tes résultats.",
+		"map": MAP_STRAFE_LANE,
+		"script": preload("res://scripts/drills/duel_drill.gd"),
+		"duration": 60.0,
+		"params": {},
+	},
+	{
 		"id": "gridshot",
 		"title": "GRIDSHOT",
 		"tag": "Visée",
