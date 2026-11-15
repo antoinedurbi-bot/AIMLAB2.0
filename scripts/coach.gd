@@ -37,6 +37,8 @@ static func build_advice(drill_id: String, report: Dictionary, previous: Array[D
 			if drill_id == "tap_burst" and _number(report, "avg_burst_length") > 3.5:
 				_add(advice, 90.0, "Rafales trop longues pour cette distance",
 						"%.1f balles par rafale en moyenne. À longue distance, seules les deux ou trois premières balles restent groupées : tire court, replace, recommence." % _number(report, "avg_burst_length"), TONE_FIX)
+		"bomb_defense":
+			_bomb_defense_rules(advice, report)
 		"peek_duel":
 			_peek_duel_rules(advice, report)
 		"multi_target":
@@ -429,6 +431,27 @@ static func _duel_rules(advice: Array[Dictionary], report: Dictionary) -> void:
 	elif win_rate >= 80.0:
 		_add(advice, 36.0, "Duels maîtrisés à ce niveau",
 				"%.0f %% de duels gagnés : la difficulté monte pour la prochaine session (cible plus rapide, temps plus court)." % win_rate, TONE_GOOD)
+
+
+static func _bomb_defense_rules(advice: Array[Dictionary], report: Dictionary) -> void:
+	var defended := bool(report.get("bomb_defended", false))
+	var reached := _count(report, "bomb_enemies_reached")
+	var killed := _count(report, "bomb_enemies_killed")
+	var max_defuse := _number(report, "bomb_max_enemy_defuse_s")
+	if not defended:
+		_add(advice, 95.0, "La charge a été désamorcée",
+				"Un adversaire a tenu 7 s sur la charge. Dès que tu entends le bip changer de ton, quelqu'un désamorce : tire sur la charge elle-même, il est forcément dessus et immobile.", TONE_FIX)
+	if reached >= 2:
+		_add(advice, 80.0, "Trop d'adversaires atteignent la charge",
+				"%d adversaires sont arrivés jusqu'à la charge. Place-toi là où tu vois à la fois la charge et son accès principal, plutôt que collé à elle." % reached, TONE_FIX)
+	if defended and max_defuse > 3.5:
+		_add(advice, 70.0, "Désamorçage stoppé de justesse",
+				"Un adversaire a désamorcé pendant %.1f s sur 7. Au-delà de la moitié, la marge d'erreur disparaît : réagis au premier bip aigu, sans attendre de le voir." % max_defuse, TONE_FIX)
+	if _number(report, "bomb_avg_kill_ms") > 3500.0 and killed >= 2:
+		_add(advice, 64.0, "Lent à éliminer",
+				"%d ms en moyenne entre l'apparition d'un adversaire et son élimination. Ils marchent en ligne droite vers la charge : pré-vise leur trajet à hauteur de tête." % roundi(_number(report, "bomb_avg_kill_ms")), TONE_FIX)
+	if defended and reached == 0:
+		_add(advice, 36.0, "Site verrouillé", "%d adversaires éliminés, aucun n'a touché la charge : les arrivées seront plus rapprochées à la prochaine session." % killed, TONE_GOOD)
 
 
 static func _peek_duel_rules(advice: Array[Dictionary], report: Dictionary) -> void:

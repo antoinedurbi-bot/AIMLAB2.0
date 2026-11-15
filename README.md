@@ -73,6 +73,10 @@ Perdre le focus de la fenêtre pendant une session l'annule (les statistiques se
 - **Localisation au son** : signal spatialisé à situer ; erreur angulaire, confusions
   gauche / droite et avant / arrière.
 - **Désamorçage** : reprise de site avec une charge de 45 s à désamorcer en 7 s.
+- **Charge** (`scenes/bomb.tscn`, `scripts/bomb.gd`) : objet posé au centre d'un site, qui
+  clignote et bipe de plus en plus vite (son spatialisé) ; le ton du bip change quand quelqu'un
+  la désamorce. Dans **Désamorçage**, c'est le joueur qui la désamorce ; dans **Défense de la
+  charge**, des adversaires marchent jusqu'à elle et la désamorcent s'ils ne sont pas éliminés.
 - **Réticule** : préréglages, éditeur, et un code texte (`KA1;forme;couleur;longueur;épaisseur;
   écart;point;contour;opacité`) pour exporter (copie dans le presse-papiers) ou importer.
   Ce format est propre à l'application.

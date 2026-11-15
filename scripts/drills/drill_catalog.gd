@@ -107,6 +107,18 @@ const DRILLS := [
 		"params": {"angle_count": 5, "retake": true, "charge_seconds": 45.0},
 	},
 	{
+		"id": "bomb_defense",
+		"title": "DÉFENSE DE LA CHARGE",
+		"tag": "Carte",
+		"focus": "Tenir un site après la pose jusqu'à l'explosion",
+		"description": "La charge est posée sur un site. Des adversaires arrivent un à un et la désamorcent en 7 secondes s'ils l'atteignent. Élimine-les à temps et tiens 45 secondes : si la charge explose, tu gagnes.",
+		"map": MAP_RANGE,
+		"maps": TACTICAL_MAPS,
+		"script": preload("res://scripts/drills/bomb_defense_drill.gd"),
+		"duration": 46.0,
+		"params": {},
+	},
+	{
 		"id": "gridshot",
 		"title": "GRIDSHOT",
 		"tag": "Visée",

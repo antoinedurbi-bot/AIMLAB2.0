@@ -17,7 +17,11 @@ var charge_seconds: float = 0.0
 var defuse_seconds: float = 7.0
 var defuse_radius: float = 4.0
 
+const Bomb := preload("res://scripts/bomb.gd")
+const BOMB_SCENE: PackedScene = preload("res://scenes/bomb.tscn")
+
 var _site: String = ""
+var _bomb: Bomb
 var _defusing: bool = false
 var _defuse_progress: float = 0.0
 var _defused: bool = false
@@ -54,6 +58,12 @@ func setup() -> void:
 
 	if charge_seconds > 0.0:
 		duration = charge_seconds
+		# La charge est posée au centre du site : on la voit clignoter et on l'entend biper.
+		_bomb = BOMB_SCENE.instantiate() as Bomb
+		_bomb.fuse_seconds = charge_seconds
+		_bomb.defuse_seconds = defuse_seconds
+		_bomb.position = marker("Site" + _site)
+		add_child(_bomb)
 	var action := "Reprends" if retake else "Attaque"
 	hud.set_objective("%s le site %s (lettre magenta au-dessus du site) : %d cibles à hauteur de tête y sont cachées." % [action, _site, angle_count])
 	hud.set_speed_gauge_visible(true)
@@ -63,8 +73,15 @@ func setup() -> void:
 			_site, angle_count, roundi(defuse_seconds), roundi(charge_seconds)])
 
 
+func begin() -> void:
+	if _bomb != null:
+		_bomb.arm()
+
+
 func update(delta: float) -> void:
 	super.update(delta)
+	if _bomb != null:
+		_bomb.set_defusing(_defusing, true)
 	if charge_seconds <= 0.0 or not _defusing:
 		return
 	var away := player.global_position.distance_to(marker("Site" + _site)) > defuse_radius
@@ -77,6 +94,8 @@ func update(delta: float) -> void:
 	hud.set_side_stat("DÉSAMORÇAGE", "%.1f / %.0f s" % [_defuse_progress, defuse_seconds])
 	if _defuse_progress >= defuse_seconds:
 		_defused = true
+		if _bomb != null:
+			_bomb.stop()
 		_finish_time = elapsed
 		score += 300 + roundi(maxf(charge_seconds - elapsed, 0.0) * 10.0)
 		hud.show_feedback("CHARGE DÉSAMORCÉE", Hud.COLOR_GOOD)
