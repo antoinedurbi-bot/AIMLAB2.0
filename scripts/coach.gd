@@ -39,6 +39,9 @@ static func build_advice(drill_id: String, report: Dictionary, previous: Array[D
 						"%.1f balles par rafale en moyenne. À longue distance, seules les deux ou trois premières balles restent groupées : tire court, replace, recommence." % _number(report, "avg_burst_length"), TONE_FIX)
 		"bomb_defense":
 			_bomb_defense_rules(advice, report)
+			_bot_combat_rules(advice, report)
+		"skirmish":
+			_bot_combat_rules(advice, report)
 		"peek_duel":
 			_peek_duel_rules(advice, report)
 		"multi_target":
@@ -431,6 +434,30 @@ static func _duel_rules(advice: Array[Dictionary], report: Dictionary) -> void:
 	elif win_rate >= 80.0:
 		_add(advice, 36.0, "Duels maîtrisés à ce niveau",
 				"%.0f %% de duels gagnés : la difficulté monte pour la prochaine session (cible plus rapide, temps plus court)." % win_rate, TONE_GOOD)
+
+
+static func _bot_combat_rules(advice: Array[Dictionary], report: Dictionary) -> void:
+	var kills := _count(report, "bot_kills")
+	var deaths := _count(report, "deaths")
+	var bot_accuracy := _number(report, "bot_accuracy")
+	var loud := _number(report, "loud_distance_m")
+	if kills + deaths < 3:
+		_add(advice, 60.0, "Peu de combats", "Seulement %d éliminations et %d morts : va au contact pour obtenir un diagnostic." % [kills, deaths], TONE_INFO)
+		return
+	if deaths > kills:
+		_add(advice, 88.0, "Tu perds plus de duels que tu n'en gagnes",
+				"%d morts pour %d éliminations. Les bots s'arrêtent pour tirer leur rafale puis strafent : tire pendant la rafale, mets-toi à couvert pendant le strafe." % [deaths, kills], TONE_FIX)
+	if bot_accuracy > 45.0:
+		_add(advice, 80.0, "Tu es une cible facile",
+				"Les bots touchent %.0f %% de leurs balles. Ne reste pas immobile à découvert après ton tir : un pas de côté ou un retour à couvert divise leur précision." % bot_accuracy, TONE_FIX)
+	if loud > 150.0 and deaths >= 2:
+		_add(advice, 72.0, "Ils t'entendent venir",
+				"%d m parcourus en courant. Les bots repèrent ta position au bruit dans un rayon de 18 m : marche (Maj) à l'approche d'un angle." % roundi(loud), TONE_FIX)
+	if _number(report, "headshot_rate") < 25.0 and _count(report, "hits") >= 10:
+		_add(advice, 70.0, "Vise la tête",
+				"%.0f %% de tirs à la tête. Un tir à la tête élimine un bot avant la fin de sa rafale ; trois balles dans le corps lui laissent le temps de répondre." % _number(report, "headshot_rate"), TONE_FIX)
+	if kills >= deaths * 3 and kills >= 4:
+		_add(advice, 36.0, "Tu domines à ce niveau", "%d éliminations pour %d morts : les bots seront plus rapides et plus précis à la prochaine session." % [kills, deaths], TONE_GOOD)
 
 
 static func _bomb_defense_rules(advice: Array[Dictionary], report: Dictionary) -> void:

@@ -81,6 +81,24 @@ Perdre le focus de la fenêtre pendant une session l'annule (les statistiques se
   écart;point;contour;opacité`) pour exporter (copie dans le presse-papiers) ou importer.
   Ce format est propre à l'application.
 
+## Intelligence artificielle des bots
+
+- **`scripts/ai/nav_grid.gd`** : grille de navigation (cellules de 1 m) construite à partir des
+  boîtes de collision de la carte, et recherche de chemin A* (`AStarGrid2D`).
+- **`scripts/ai/bot_brain.gd`** : machine à états posée sur une cible humanoïde.
+  *Déplacement* vers un objectif ou vers le joueur ; *combat* après un temps de réaction
+  (rafale à l'arrêt, puis strafe, puis nouvelle rafale) ; *désamorçage* une fois sur la charge.
+  Le bot perçoit le joueur par la ligne de vue et par le bruit (course à moins de 18 m), et se
+  rend à sa dernière position connue quand il le perd. Il ne connaît jamais la position du
+  joueur sans l'avoir vu ou entendu.
+- **Niveau** : un réglage de 0 à 1 fixe réaction (0,7 s → 0,22 s), précision (30 % → 80 %),
+  vitesse et pauses ; il suit la difficulté adaptative de l'exercice.
+- **`scripts/drills/bot_drill_base.gd`** : base des exercices contre bots (apparition, tirs des
+  bots, 100 points de vie pour le joueur, statistiques de combat).
+- **Escarmouche** : deux bots patrouillent une grande carte et vous traquent.
+  **Défense de la charge** : les bots partent du spawn défenseur, rejoignent la charge par le
+  chemin le plus court, ripostent, et la désamorcent.
+
 ## Exercices
 
 | Exercice | Ce qu'il travaille | Carte | Mesures principales |
