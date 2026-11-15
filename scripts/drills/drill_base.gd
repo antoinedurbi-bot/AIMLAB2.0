@@ -118,6 +118,11 @@ func marker_yaw(marker_name: String) -> float:
 	return rad_to_deg(node.global_rotation.y)
 
 
+## Vrai si la carte possède ce repère (sans avertissement s'il manque).
+func has_marker(marker_name: String) -> bool:
+	return map_root != null and map_root.has_node("Markers/" + marker_name)
+
+
 func _marker_node(marker_name: String) -> Node3D:
 	var node: Node3D = null
 	if map_root != null:

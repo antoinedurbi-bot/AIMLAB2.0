@@ -50,6 +50,10 @@ Perdre le focus de la fenêtre pendant une session l'annule (les statistiques se
 | **Pré-visée** | Placement du viseur en nettoyant des angles | Parcours | Erreur de pré-visée (verticale et horizontale), temps pour abattre, tirs en mouvement |
 | **Chrono de la charge** | Compter de tête depuis la pose | Stand de tir | Erreur par manche, biais, rythme interne, effet de la pression |
 
+| **Attaque de site** | Entrer sur un site et nettoyer chaque angle | Grande carte au choix | Erreur de pré-visée, temps pour abattre, tirs en mouvement |
+| **Reprise de site** | Revenir du spawn défenseur et reprendre un site | Grande carte au choix | Idem, départ côté défense |
+| **Exploration libre** | Apprendre une carte | Grande carte au choix | Distance, temps en mouvement (Échap termine la session) |
+
 Chaque exercice est un script dans `scripts/drills/` qui étend `drill_base.gd`, inscrit dans
 `scripts/drills/drill_catalog.gd` (titre, description, carte, durée, paramètres). En ajouter un
 revient à écrire un script et une entrée de catalogue.
@@ -87,6 +91,19 @@ situation d'entraînement ; ce ne sont pas des reproductions de cartes d'un jeu 
   (jiggle peek), et au fond une cloison percée d'un passage (tenue d'angle).
 - `scenes/maps/kill_house.tscn` — parcours : cinq couloirs en serpentin, reliés par des passages
   alternés, avec caisses basses et hautes. Deux positions de cible possibles par angle.
+
+### Grandes cartes tactiques
+
+Sept cartes originales de 130 à 144 m sur 140 m, choisies dans le menu pour les exercices
+« Attaque de site », « Reprise de site » et « Exploration libre » : **Citadelle**, **Triade**
+(trois sites), **Faubourg**, **Entrepôt**, **Canal**, **Rotonde** et **Dédale**
+(`scenes/maps/tactical_*.tscn`). Toutes suivent la même grammaire — spawn attaquants au sud,
+spawn défenseurs au nord, un lobby et une entrée principale par site, une entrée secondaire
+depuis le mid, une liaison défensive — avec des formes différentes : entrée en chicane, longue
+ligne droite, goulot, double mid, cour centrale, couloir de contournement, site central.
+Chaque site est délimité au sol par un contour magenta, signalé par sa lettre en hauteur, et
+garni de caisses basses (1,2 à 1,3 m) et hautes (2,4 m). Seize positions de cible par site ;
+huit sont tirées au sort à chaque session.
 
 Chaque carte contient un nœud `Markers` dont les `Marker3D` nomment les points utilisés par les
 exercices (apparition du joueur, positions de cibles). Elles s'éditent librement dans Godot :

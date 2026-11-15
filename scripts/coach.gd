@@ -28,8 +28,11 @@ static func build_advice(drill_id: String, report: Dictionary, previous: Array[D
 			_counter_strafe_rules(advice, report)
 		"jiggle_peek":
 			_jiggle_rules(advice, report)
-		"pre_aim":
+		"pre_aim", "site_attack", "site_retake":
 			_pre_aim_rules(advice, report)
+		"free_roam":
+			_add(advice, 50.0, "Carte reconnue",
+					"%d m parcourus. Enchaîne maintenant avec « Attaque de site » ou « Reprise de site » sur cette carte pour mettre les trajets à l'épreuve." % _count(report, "distance_moved_m"), TONE_INFO)
 		"charge_timer":
 			_timer_rules(advice, report)
 		_:

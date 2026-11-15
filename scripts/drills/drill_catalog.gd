@@ -16,6 +16,17 @@ const MAP_STRAFE_LANE := "res://scenes/maps/strafe_lane.tscn"
 const MAP_ANGLE_HALL := "res://scenes/maps/angle_hall.tscn"
 const MAP_KILL_HOUSE := "res://scenes/maps/kill_house.tscn"
 
+## Grandes cartes originales (deux ou trois sites), au choix dans le menu.
+const TACTICAL_MAPS := [
+	{"name": "Citadelle", "path": "res://scenes/maps/tactical_citadelle.tscn"},
+	{"name": "Triade (3 sites)", "path": "res://scenes/maps/tactical_triade.tscn"},
+	{"name": "Faubourg", "path": "res://scenes/maps/tactical_faubourg.tscn"},
+	{"name": "Entrepôt", "path": "res://scenes/maps/tactical_entrepot.tscn"},
+	{"name": "Canal", "path": "res://scenes/maps/tactical_canal.tscn"},
+	{"name": "Rotonde", "path": "res://scenes/maps/tactical_rotonde.tscn"},
+	{"name": "Dédale", "path": "res://scenes/maps/tactical_dedale.tscn"},
+]
+
 const DRILLS := [
 	{
 		"id": "gridshot",
@@ -100,6 +111,42 @@ const DRILLS := [
 		"map": MAP_RANGE,
 		"script": preload("res://scripts/drills/charge_timer_drill.gd"),
 		"duration": 200.0,
+		"params": {},
+	},
+	{
+		"id": "site_attack",
+		"title": "ATTAQUE DE SITE",
+		"tag": "Carte",
+		"focus": "Entrer sur un site et nettoyer chaque angle",
+		"description": "Sur une grande carte au choix, un site est tiré au sort. Tu pars du lobby, tu entres et tu abats les huit cibles cachées derrière les caisses et les coins. Les positions changent à chaque session.",
+		"map": MAP_RANGE,
+		"maps": TACTICAL_MAPS,
+		"script": preload("res://scripts/drills/site_clear_drill.gd"),
+		"duration": 120.0,
+		"params": {"angle_count": 8},
+	},
+	{
+		"id": "site_retake",
+		"title": "REPRISE DE SITE",
+		"tag": "Carte",
+		"focus": "Revenir du spawn défenseur et reprendre un site",
+		"description": "Même principe côté défense : tu pars du spawn des défenseurs, tu rejoins le site tiré au sort et tu le reprends angle par angle. Le chronomètre récompense une reprise rapide et propre.",
+		"map": MAP_RANGE,
+		"maps": TACTICAL_MAPS,
+		"script": preload("res://scripts/drills/site_clear_drill.gd"),
+		"duration": 120.0,
+		"params": {"angle_count": 8, "retake": true},
+	},
+	{
+		"id": "free_roam",
+		"title": "EXPLORATION LIBRE",
+		"tag": "Carte",
+		"focus": "Apprendre une carte : trajets, angles, rotations",
+		"description": "Parcours librement une grande carte, sans cible ni score. Utile avant les exercices d'attaque et de reprise pour repérer les entrées de chaque site.",
+		"map": MAP_RANGE,
+		"maps": TACTICAL_MAPS,
+		"script": preload("res://scripts/drills/free_roam_drill.gd"),
+		"duration": 300.0,
 		"params": {},
 	},
 ]

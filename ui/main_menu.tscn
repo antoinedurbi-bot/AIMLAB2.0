@@ -73,7 +73,7 @@ text = "EXERCICES"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/h_separation = 10
-theme_override_constants/v_separation = 8
+theme_override_constants/v_separation = 6
 columns = 2
 
 [node name="ModePanel" type="PanelContainer" parent="Margin/Columns/Left"]
@@ -97,10 +97,25 @@ text = "Compétence travaillée"
 
 [node name="ModeDescription" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(420, 96)
+custom_minimum_size = Vector2(420, 72)
 layout_mode = 2
 text = "Description"
 autowrap_mode = 3
+
+[node name="MapRow" type="HBoxContainer" parent="Margin/Columns/Left/ModePanel/ModeBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="MapCaption" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox/MapRow"]
+layout_mode = 2
+text = "Carte"
+
+[node name="MapOption" type="OptionButton" parent="Margin/Columns/Left/ModePanel/ModeBox/MapRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 0)
+layout_mode = 2
 
 [node name="ModeStats" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
 unique_name_in_owner = true

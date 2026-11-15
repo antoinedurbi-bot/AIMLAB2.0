@@ -4,7 +4,8 @@ extends Control
 ## et les lignes de réglages sont construites par code pour garder la scène lisible.
 
 ## Émis avec l'identifiant de l'exercice choisi.
-signal play_requested(drill_id: String)
+## `map_path` / `map_name` sont vides pour les exercices à carte fixe.
+signal play_requested(drill_id: String, map_path: String, map_name: String)
 signal quit_requested
 
 const DrillCatalog := preload("res://scripts/drills/drill_catalog.gd")
@@ -30,12 +31,15 @@ var _selected_drill: String = "gridshot"
 @onready var _mode_focus: Label = %ModeFocus
 @onready var _mode_description: Label = %ModeDescription
 @onready var _mode_stats: Label = %ModeStats
+@onready var _map_row: HBoxContainer = %MapRow
+@onready var _map_option: OptionButton = %MapOption
 
 
 func _ready() -> void:
 	_play_button.pressed.connect(_on_play_pressed)
 	_quit_button.pressed.connect(_on_quit_pressed)
 	visibility_changed.connect(_on_visibility_changed)
+	_map_option.item_selected.connect(_on_map_selected)
 	_build_drill_list()
 	_build_sensitivity_section()
 	_build_crosshair_section()
@@ -48,7 +52,7 @@ func _ready() -> void:
 func _on_play_pressed() -> void:
 	GameSettings.last_drill = _selected_drill
 	GameSettings.save_settings()
-	play_requested.emit(_selected_drill)
+	play_requested.emit(_selected_drill, _selected_map("path"), _selected_map("name"))
 
 
 func _on_quit_pressed() -> void:
@@ -85,6 +89,10 @@ func _build_drill_list() -> void:
 	_show_drill(_selected_drill)
 
 
+func _on_map_selected(_index: int) -> void:
+	_refresh_drill_stats()
+
+
 func _on_drill_pressed(drill_id: String) -> void:
 	_show_drill(drill_id)
 
@@ -96,15 +104,40 @@ func _show_drill(drill_id: String) -> void:
 	_mode_name.text = "%s · %d s max" % [entry.get("title", ""), roundi(duration)]
 	_mode_focus.text = entry.get("focus", "")
 	_mode_description.text = entry.get("description", "")
+	var maps: Array = entry.get("maps", [])
+	var previous_choice := _map_option.selected
+	_map_option.clear()
+	for item: Variant in maps:
+		var map_entry: Dictionary = item
+		_map_option.add_item(str(map_entry.get("name", "")))
+	_map_row.visible = not maps.is_empty()
+	if not maps.is_empty():
+		_map_option.select(clampi(previous_choice, 0, maps.size() - 1))
 	_refresh_drill_stats()
 
 
+## Champ (« path » ou « name ») de la carte choisie, vide si l'exercice a une carte fixe.
+func _selected_map(field: String) -> String:
+	var entry: Dictionary = DrillCatalog.find(_selected_drill)
+	var maps: Array = entry.get("maps", [])
+	if maps.is_empty():
+		return ""
+	var map_entry: Dictionary = maps[clampi(_map_option.selected, 0, maps.size() - 1)]
+	return str(map_entry.get(field, ""))
+
+
+## Clé d'historique : un exercice joué sur plusieurs cartes a un historique par carte.
+func _history_key() -> String:
+	var map_name := _selected_map("name")
+	return _selected_drill if map_name == "" else "%s@%s" % [_selected_drill, map_name]
+
+
 func _refresh_drill_stats() -> void:
-	var sessions: int = SessionHistory.session_count(_selected_drill)
+	var sessions: int = SessionHistory.session_count(_history_key())
 	if sessions <= 0:
 		_mode_stats.text = "Aucune session enregistrée pour cet exercice"
 	else:
-		var best: int = SessionHistory.best_score(_selected_drill)
+		var best: int = SessionHistory.best_score(_history_key())
 		_mode_stats.text = "%d sessions enregistrées · record : %d points" % [sessions, best]
 
 

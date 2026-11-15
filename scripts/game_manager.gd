@@ -32,6 +32,10 @@ var _map: Node3D
 var _map_path: String = DrillCatalog.MAP_RANGE
 var _drill: DrillBase
 var _drill_id: String = "gridshot"
+## Carte choisie pour les exercices multi-cartes (vide sinon) et clé d'historique associée.
+var _chosen_map_path: String = ""
+var _chosen_map_name: String = ""
+var _history_key: String = "gridshot"
 ## Position du joueur dans la scène principale : point d'apparition par défaut du stand de tir.
 var _default_spawn: Vector3 = Vector3.ZERO
 var _session_start_usec: int = 0
@@ -71,7 +75,10 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"ui_cancel"):
-		if state != State.MENU:
+		if state == State.PLAYING and _drill_id == "free_roam":
+			_finish_session()
+			get_viewport().set_input_as_handled()
+		elif state != State.MENU:
 			_show_menu()
 			get_viewport().set_input_as_handled()
 	elif event is InputEventKey:
@@ -99,17 +106,24 @@ func _notification(what: int) -> void:
 # ---------------------------------------------------------------------------
 
 ## Charge la carte de l'exercice, l'instancie et lance le compte à rebours.
-func start_session(drill_id: String) -> void:
+func start_session(drill_id: String, chosen_map_path: String = "", chosen_map_name: String = "") -> void:
 	_abort_session()
 	var entry: Dictionary = DrillCatalog.find(drill_id)
 	_drill_id = entry.get("id", "gridshot")
+	_chosen_map_path = chosen_map_path
+	_chosen_map_name = chosen_map_name
+	_history_key = _drill_id if chosen_map_name == "" else "%s@%s" % [_drill_id, chosen_map_name]
 	var map_path: String = entry.get("map", DrillCatalog.MAP_RANGE)
+	if chosen_map_path != "":
+		map_path = chosen_map_path
 	_load_map(map_path)
 
 	var drill_script := entry.get("script") as GDScript
 	var drill := drill_script.new() as DrillBase
 	drill.drill_id = _drill_id
 	drill.title = entry.get("title", "")
+	if chosen_map_name != "":
+		drill.title = "%s · %s" % [drill.title, chosen_map_name.to_upper()]
 	drill.duration = entry.get("duration", 60.0)
 	drill.player = player
 	drill.hud = hud
@@ -149,7 +163,7 @@ func start_session(drill_id: String) -> void:
 
 
 func _replay() -> void:
-	start_session(_drill_id)
+	start_session(_drill_id, _chosen_map_path, _chosen_map_name)
 
 
 func _update_countdown() -> void:
@@ -204,7 +218,8 @@ func _finish_session() -> void:
 	report["drill"] = _drill_id
 	_drill.finalize(report)
 
-	var previous: Array[Dictionary] = SessionHistory.recent(_drill_id, HISTORY_WINDOW)
+	report["map"] = _chosen_map_name
+	var previous: Array[Dictionary] = SessionHistory.recent(_history_key, HISTORY_WINDOW)
 	var advice: Array[Dictionary] = Coach.build_advice(_drill_id, report, previous)
 	if not advice.is_empty():
 		report["advice"] = advice[0].get("title", "")
@@ -213,7 +228,7 @@ func _finish_session() -> void:
 		var exported: String = Telemetry.export_raw("%s_%s" % [stamp, _drill_id], report)
 		if exported != "":
 			report["export_path"] = ProjectSettings.globalize_path(exported)
-	SessionHistory.add_session(_drill_id, report)
+	SessionHistory.add_session(_history_key, report)
 
 	var drill_title := _drill.title
 	_free_drill()
