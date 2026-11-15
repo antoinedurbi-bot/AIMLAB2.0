@@ -1,0 +1,58 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="KINETIC // AIM"
+config/description="Aim trainer haute précision : Gridshot, télémétrie 1000 Hz et analyse biomécanique des flicks."
+config/version="0.1.0"
+run/main_scene="res://scenes/main.tscn"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="KineticAim"
+config/features=PackedStringArray("4.3", "Forward Plus")
+run/max_fps=0
+boot_splash/bg_color=Color(0.02, 0.03, 0.05, 1)
+config/icon="res://icon.svg"
+
+[autoload]
+
+GameSettings="*res://scripts/settings_manager.gd"
+Telemetry="*res://scripts/telemetry_manager.gd"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/mode=2
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/vsync/vsync_mode=0
+
+[gui]
+
+theme/custom="res://ui/kinetic_theme.tres"
+
+[layer_names]
+
+3d_physics/layer_1="world"
+3d_physics/layer_2="targets"
+
+[physics]
+
+common/physics_ticks_per_second=1000
+common/max_physics_steps_per_frame=100
+
+[rendering]
+
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
+anti_aliasing/quality/msaa_3d=2
+anti_aliasing/quality/use_debanding=true
+environment/defaults/default_clear_color=Color(0.02, 0.03, 0.05, 1)

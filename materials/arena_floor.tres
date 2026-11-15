@@ -1,0 +1,32 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[ext_resource type="ShaderMaterial" path="res://materials/grid_floor.tres" id="1_grid"]
+
+[sub_resource type="Gradient" id="Gradient_wear"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.5, 0.5, 0.5, 1, 1, 1, 1, 1)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_wear"]
+noise_type = 3
+seed = 7
+frequency = 0.012
+fractal_octaves = 4
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_wear"]
+width = 512
+height = 512
+generate_mipmaps = true
+seamless = true
+color_ramp = SubResource("Gradient_wear")
+noise = SubResource("FastNoiseLite_wear")
+
+[resource]
+next_pass = ExtResource("1_grid")
+albedo_color = Color(0.16, 0.17, 0.2, 1)
+metallic = 0.45
+metallic_specular = 0.55
+roughness = 0.42
+roughness_texture = SubResource("NoiseTexture2D_wear")
+uv1_scale = Vector3(0.2, 0.2, 0.2)
+uv1_triplanar = true
+uv1_world_triplanar = true

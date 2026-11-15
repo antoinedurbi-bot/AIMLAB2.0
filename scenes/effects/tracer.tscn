@@ -1,0 +1,16 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/tracer.gd" id="1_tracer"]
+[ext_resource type="StandardMaterial3D" path="res://materials/tracer.tres" id="2_material"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_beam"]
+size = Vector3(1, 1, 1)
+
+[node name="Tracer" type="Node3D"]
+script = ExtResource("1_tracer")
+
+[node name="Beam" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+gi_mode = 0
+mesh = SubResource("BoxMesh_beam")
+surface_material_override/0 = ExtResource("2_material")

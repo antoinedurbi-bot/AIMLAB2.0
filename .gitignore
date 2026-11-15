@@ -1,0 +1,12 @@
+# Godot 4 : cache d'import et données générées par l'éditeur
+.godot/
+*.translation
+
+# Exports
+/build/
+/export/
+export_credentials.cfg
+
+# Divers
+.DS_Store
+Thumbs.db
