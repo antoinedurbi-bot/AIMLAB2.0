@@ -10,6 +10,7 @@ signal quit_requested
 
 const DrillCatalog := preload("res://scripts/drills/drill_catalog.gd")
 const TrainingPlan := preload("res://scripts/training_plan.gd")
+const RadarChart := preload("res://ui/radar_chart.gd")
 
 const CROSSHAIR_STYLES := ["Croix", "Croix + point", "Point", "Cercle + point"]
 const QUALITY_LEVELS := ["Performance", "Qualité (SSAO, MSAA 4x)", "Ultra (+ SDFGI, SSR)"]
@@ -24,6 +25,7 @@ var _game_sens_spin: SpinBox
 var _sens_summary: Label
 var _selected_drill: String = "gridshot"
 var _profile_label: Label
+var _radar: RadarChart
 var _routine_label: Label
 var _routine_button: Button
 var _next_routine_drill: String = ""
@@ -156,6 +158,9 @@ func _refresh_drill_stats() -> void:
 
 func _build_profile_section() -> void:
 	_add_section("PROFIL ET ROUTINE DU JOUR")
+	_radar = RadarChart.new()
+	_radar.custom_minimum_size = Vector2(0.0, 250.0)
+	_settings_list.add_child(_radar)
 	_profile_label = Label.new()
 	_profile_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_settings_list.add_child(_profile_label)
@@ -172,6 +177,7 @@ func _build_profile_section() -> void:
 func _refresh_profile() -> void:
 	if _profile_label == null:
 		return
+	_radar.set_profile(PlayerProfile.radar_labels(), PlayerProfile.radar_values())
 	var has_benchmark: bool = PlayerProfile.has_benchmark()
 	var ordered: Array[String] = PlayerProfile.skills_by_weakness()
 	if has_benchmark:

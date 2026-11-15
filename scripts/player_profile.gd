@@ -75,6 +75,25 @@ func skills_by_weakness() -> Array[String]:
 	return ordered
 
 
+## Profil en cinq domaines pour le graphique en pentagone : les quatre notes du
+## dernier diagnostic, plus le déplacement (part de tirs propres sur les trois
+## dernières sessions de strafe / contre-strafe). -1 = domaine pas encore évalué.
+func radar_values() -> PackedFloat32Array:
+	var latest := latest_benchmark()
+	var values := PackedFloat32Array()
+	for skill: String in SKILLS:
+		var note: float = latest.get(skill, -1.0)
+		values.append(note)
+	var sessions: Array[Dictionary] = SessionHistory.recent("counter_strafe", 3)
+	var movement: float = SessionHistory.average(sessions, "clean_rate")
+	values.append(-1.0 if is_nan(movement) else movement)
+	return values
+
+
+func radar_labels() -> PackedStringArray:
+	return PackedStringArray(["Flick", "Tracking", "Réaction", "Spray", "Déplacement"])
+
+
 func skill_name(skill: String) -> String:
 	return str(SKILL_NAMES.get(skill, skill))
 
