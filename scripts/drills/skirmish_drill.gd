@@ -8,7 +8,7 @@ extends "res://scripts/drills/bot_drill_base.gd"
 ## Mesures : éliminations, morts, dégâts subis, précision des bots contre toi,
 ## tirs à la tête, temps pour éliminer.
 
-var bot_count: int = 2
+var bot_count: int = 3
 var min_spawn_distance: float = 28.0
 
 var _patrol_points: Array[Vector3] = []
@@ -27,6 +27,7 @@ func setup() -> void:
 			_patrol_points.append(marker("Site%s" % letter))
 			_patrol_points.append(marker("Lobby%s" % letter))
 	_patrol_points.append(marker("DefenderSpawn"))
+	squad.waypoints = _patrol_points
 	hud.set_objective("Des bots te traquent. Ils t'entendent courir (Maj pour marcher) et tirent par rafales : punis-les pendant qu'ils sont à l'arrêt.")
 	hud.set_speed_gauge_visible(true)
 	_refresh_side_stat()
@@ -85,6 +86,7 @@ func finalize(report: Dictionary) -> void:
 	add_kpi(report, "TIRS À LA TÊTE", "%d %%" % roundi(Stats.percent(head_hits, head_hits + body_hits)) if hits > 0 else "—", "")
 	add_kpi(report, "TEMPS POUR ÉLIMINER", "%.1f s" % (Stats.mean(kill_times) / 1000.0) if bot_kills > 0 else "—", "de l'apparition du bot à son élimination")
 	add_shooting_kpis(report)
+	add_kpi(report, "TIRS CROISÉS SUBIS", str(crossfire_hits), "%d contournements · %d soutiens ordonnés" % [squad.flanks_ordered, squad.assists_ordered])
 	add_kpi(report, "BRUIT", "%d m" % roundi(player.loud_distance), "parcourus en courant, audibles par les bots")
 	add_kpi(report, "RANG DES BOTS", BotRanks.rank_name(bot_rank()), "adaptatif" if GameSettings.bot_rank < 0 else "fixé dans le menu")
 	set_chart(report, "TEMPS POUR ÉLIMINER CHAQUE BOT (ms)", kill_times, "ms", 12000.0, true)

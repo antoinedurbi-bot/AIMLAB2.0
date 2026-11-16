@@ -468,6 +468,9 @@ static func _bot_combat_rules(advice: Array[Dictionary], report: Dictionary) -> 
 	if _number(report, "headshot_rate") < 25.0 and _count(report, "hits") >= 10:
 		_add(advice, 70.0, "Vise la tête",
 				"%.0f %% de tirs à la tête. Un tir à la tête élimine un bot avant la fin de sa rafale ; trois balles dans le corps lui laissent le temps de répondre." % _number(report, "headshot_rate"), TONE_FIX)
+	if _count(report, "crossfire_hits") >= 3:
+		_add(advice, 84.0, "Tu te fais prendre en tir croisé",
+				"%d balles reçues alors que deux bots te tiraient dessus en même temps. Ne combats jamais à découvert sur deux angles : recule derrière un mur pour n'en voir qu'un à la fois, ou coupe l'un des deux avec un fumigène." % _count(report, "crossfire_hits"), TONE_FIX)
 	if kills >= deaths * 3 and kills >= 4:
 		var rank_name := str(report.get("bot_rank_name", ""))
 		var next_step := "ils monteront de niveau à la prochaine session" if bool(report.get("bot_rank_adaptive", true)) else "passe au rang supérieur dans le menu"

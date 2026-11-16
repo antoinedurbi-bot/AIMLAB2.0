@@ -8,6 +8,7 @@ const BotBrain := preload("res://scripts/ai/bot_brain.gd")
 const NavGrid := preload("res://scripts/ai/nav_grid.gd")
 const BotRanks := preload("res://scripts/ai/bot_ranks.gd")
 const UtilityKit := preload("res://scripts/utility/utility_kit.gd")
+const BotSquad := preload("res://scripts/ai/bot_squad.gd")
 const HUMANOID_SCENE: PackedScene = preload("res://scenes/humanoid_target.tscn")
 
 ## Étendue couverte par la grille de navigation (x, z en mètres).
@@ -23,6 +24,9 @@ var bots: Array[Humanoid] = []
 var brains: Dictionary = {}
 var player_health: float = PLAYER_MAX_HEALTH
 var utilities: UtilityKit
+var squad: BotSquad
+## Balles reçues pendant qu'au moins deux bots te combattaient en même temps.
+var crossfire_hits: int = 0
 ## Charges de chaque utilitaire par session.
 var utility_charges: int = 2
 var bots_blinded: int = 0
@@ -63,6 +67,9 @@ func prepare_bots() -> void:
 	player.recoil_enabled = true
 	player_health = PLAYER_MAX_HEALTH
 	nav.build(map_root, NAV_BOUNDS)
+	squad = BotSquad.new()
+	add_child(squad)
+	squad.start(nav)
 	utilities = UtilityKit.new()
 	add_child(utilities)
 	utilities.start(player, hud, map_root, utility_charges)
@@ -80,6 +87,9 @@ func tick_utilities(delta: float) -> void:
 			bot_kills += 1
 			burn_kills += 1
 			fx.explosion(bot.head_position())
+			var burned_brain := brain_of(bot)
+			if burned_brain != null:
+				squad.remove_member(burned_brain, bot.global_position)
 			bots.remove_at(index)
 			brains.erase(bot.target_id)
 			bot.destroy()
@@ -113,6 +123,7 @@ func spawn_bot(at: Vector3) -> BotBrain:
 	brain.shot_fired.connect(_on_bot_shot)
 	bots.append(bot)
 	brains[bot.target_id] = brain
+	squad.add_member(brain)
 	_bot_spawn_usec[bot.target_id] = Time.get_ticks_usec()
 	return brain
 
@@ -156,6 +167,8 @@ func resolve_player_shot(collider: Object, hit_position: Vector3, hit_normal: Ve
 	kill_times.append(float(now - born) / 1000.0)
 	fx.explosion(struck.head_position())
 	Sfx.play(&"kill")
+	if struck_brain != null:
+		squad.remove_member(struck_brain, player.global_position)
 	bots.erase(struck)
 	brains.erase(struck.target_id)
 	return struck
@@ -186,6 +199,11 @@ func add_combat_stats(report: Dictionary) -> void:
 	report["avg_bot_kill_ms"] = Stats.mean(kill_times)
 	report["bot_rank"] = bot_rank()
 	report["bots_blinded"] = bots_blinded
+	report["crossfire_hits"] = crossfire_hits
+	report["squad_flanks"] = squad.flanks_ordered
+	report["squad_assists"] = squad.assists_ordered
+	report["squad_trades"] = squad.trades_informed
+	report["squad_defuser_swaps"] = squad.defuser_swaps
 	report["burn_kills"] = burn_kills
 	if utilities != null:
 		report["smokes_used"] = utilities.throws[UtilityKit.Kind.SMOKE]
@@ -206,6 +224,8 @@ func _on_bot_shot(hit: bool, head: bool, origin: Vector3, end_point: Vector3) ->
 		return
 	var damage := BOT_HEAD_DAMAGE if head else BOT_BODY_DAMAGE
 	bot_hits += 1
+	if squad.engaging_count() >= 2:
+		crossfire_hits += 1
 	if head:
 		bot_head_hits += 1
 	damage_taken += damage

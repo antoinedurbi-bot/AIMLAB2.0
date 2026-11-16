@@ -98,7 +98,10 @@ Perdre le focus de la fenêtre pendant une session l'annule (les statistiques se
     immédiate, corps = trois balles.
 - **Navigation** (`scripts/ai/nav_grid.gd`) : grille de 1 m construite depuis les collisions de
   la carte, chemins par `AStarGrid2D`.
-- **Exercices** : Escarmouche (deux bots te traquent) et Défense de la charge (les bots
+- **Escouade** (`scripts/ai/bot_squad.gd`) : partage de ta position entre bots, rôles (entrée,
+  contournement, soutien), tir croisé quand l'un d'eux engage, un seul désamorceur couvert par
+  les autres et relevé s'il tombe. La part de bots qui obéissent dépend du rang (0 % Fer, 100 % Radiant).
+- **Exercices** : Escarmouche (trois bots te traquent) et Défense de la charge (les bots
   viennent désamorcer et ripostent).
 
 ## Utilitaires et lineups

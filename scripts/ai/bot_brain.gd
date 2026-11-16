@@ -14,7 +14,8 @@ extends Node
 ##            qu'il tourne à vitesse finie). De dos, il ne te voit pas.
 ##   Ouïe   : te repère si tu cours à portée.
 ##   Dégâts : se retourne vers l'origine du tir.
-##   Équipe : à partir d'un certain rang, les bots partagent ta dernière position.
+##   Équipe : l'escouade (bot_squad.gd) transmet ta position entre bots coordonnés
+##            et leur donne des rôles : entrée, contournement, soutien, couverture.
 ##
 ## Visée
 ##   Le bot vise un point (tête ou torse) avec un écart angulaire qui part de
@@ -25,7 +26,7 @@ extends Node
 
 signal shot_fired(hit: bool, head: bool, origin: Vector3, end_point: Vector3)
 
-enum State { MOVING, ENGAGING, COVERING, DEFUSING }
+enum State { MOVING, ENGAGING, COVERING, DEFUSING, GUARDING }
 
 const Humanoid := preload("res://scripts/humanoid_target.gd")
 const PlayerController := preload("res://scripts/player.gd")
@@ -48,15 +49,13 @@ const CHEST_OFFSET := -0.45
 const HEAD_ZONE := 0.18
 const MEMORY_SECONDS := 6.0
 
-## Dernière position connue du joueur partagée entre bots (rangs qui communiquent).
-static var shared_position: Vector3 = Vector3.ZERO
-static var shared_usec: int = 0
-
 var state: int = State.MOVING
 var hunting: bool = false
 var objective: Vector3 = Vector3.ZERO
 var hold_at_objective: bool = false
 var rank_profile: Dictionary = {}
+## Vrai si ce bot suit les ordres de l'escouade (tiré selon la coordination de son rang).
+var coordinated: bool = false
 
 var _body: Humanoid
 var _player: PlayerController
@@ -100,6 +99,9 @@ var _cover_wait: float = 0.0
 var _fight_position: Vector3 = Vector3.ZERO
 var _moved: bool = false
 var _blind_seconds: float = 0.0
+## Point de passage imposé par l'escouade (contournement) ; Vector3.INF = aucun.
+var _via: Vector3 = Vector3.INF
+var _guard_post: Vector3 = Vector3.INF
 
 
 func setup(body: Humanoid, player: PlayerController, nav: NavGrid, profile: Dictionary) -> void:
@@ -123,6 +125,8 @@ func setup(body: Humanoid, player: PlayerController, nav: NavGrid, profile: Dict
 	_run_and_gun = profile.get("run_and_gun", 0.18)
 	_cover = profile.get("cover", 0.3)
 	_teamwork = profile.get("teamwork", true)
+	var coordination: float = profile.get("coordination", 0.5)
+	coordinated = _rng.randf() < coordination
 	# Chaque bot a son propre temps de réaction, à ±12 % de celui du rang.
 	_reaction *= _rng.randf_range(0.88, 1.12)
 	_body.moving_enabled = false
@@ -133,7 +137,64 @@ func go_to(world_position: Vector3, hold: bool) -> void:
 	hunting = false
 	hold_at_objective = hold
 	objective = world_position
+	_guard_post = Vector3.INF
+	if state == State.GUARDING or state == State.DEFUSING:
+		state = State.MOVING
 	_request_path(objective)
+
+
+## Se poste à `post` et surveille la dernière position connue du joueur.
+func guard(post: Vector3) -> void:
+	hunting = false
+	hold_at_objective = false
+	objective = post
+	_guard_post = post
+	state = State.MOVING
+	_request_path(post)
+
+
+# --- Interface de l'escouade ---
+
+func body_position() -> Vector3:
+	return _body.global_position if _body != null else Vector3.ZERO
+
+
+func knowledge_usec() -> int:
+	return _known_usec
+
+
+func last_known_position() -> Vector3:
+	return _last_known
+
+
+func remembers_player() -> bool:
+	return _remembers_player()
+
+
+## Vrai si le bot combat (rafale, strafe ou mise à couvert).
+func is_fighting() -> bool:
+	return state == State.ENGAGING or state == State.COVERING
+
+
+## Reçoit une information d'un coéquipier (ignorée si elle est plus ancienne que la sienne).
+func inform(world_position: Vector3, usec: int) -> void:
+	if usec > _known_usec:
+		_last_known = world_position
+		_known_usec = usec
+
+
+## Impose un point de passage pour arriver par un autre côté. Renvoie vrai si l'ordre change.
+func set_via(point: Vector3) -> bool:
+	if point == Vector3.INF or point.distance_to(_via) < 1.0:
+		return false
+	_via = point
+	if state == State.MOVING:
+		_request_path(_last_known if _remembers_player() else objective)
+	return true
+
+
+func clear_via() -> void:
+	_via = Vector3.INF
 
 
 ## Le bot traque le joueur ; sans information, il patrouille vers `patrol_point`.
@@ -187,6 +248,12 @@ func _process(delta: float) -> void:
 			# Il lâche le désamorçage s'il a le joueur en vue assez longtemps.
 			if _seen_seconds >= _reaction * 1.3:
 				_start_engaging()
+		State.GUARDING:
+			# En couverture : immobile, regard vers la menace, prêt à tirer.
+			if _remembers_player():
+				_desired_yaw = _yaw_to(_last_known)
+			if _seen_seconds >= _reaction:
+				_start_engaging()
 	_facing_yaw = _rotate_towards(_facing_yaw, _desired_yaw, _turn_speed * delta)
 
 
@@ -214,23 +281,17 @@ func _perceive(delta: float) -> void:
 		if feet_distance <= _hearing and _player.horizontal_speed() > PlayerController.LOUD_SPEED:
 			_learn_position(_player.global_position)
 			_desired_yaw = _yaw_to(_player.global_position)
-		elif _teamwork and shared_usec > _known_usec and float(Time.get_ticks_usec() - shared_usec) / 1000000.0 <= MEMORY_SECONDS:
-			_last_known = shared_position
-			_known_usec = shared_usec
 
 	if state == State.MOVING and _seen_seconds >= _reaction:
 		_start_engaging()
 	elif state == State.ENGAGING and _unseen_seconds >= LOSE_SIGHT_SECONDS:
 		state = State.MOVING
-		_request_path(_last_known if hunting or not hold_at_objective else objective)
+		_request_path(_last_known if hunting else objective)
 
 
 func _learn_position(world_position: Vector3) -> void:
 	_last_known = world_position
 	_known_usec = Time.get_ticks_usec()
-	if _teamwork:
-		shared_position = world_position
-		shared_usec = _known_usec
 
 
 func _remembers_player() -> bool:
@@ -264,6 +325,8 @@ func _update_moving(delta: float) -> void:
 	if _path_index >= _path.size():
 		if hold_at_objective and _flat_distance(_body.global_position, objective) <= ARRIVAL_DISTANCE + 0.6:
 			state = State.DEFUSING
+		elif _guard_post != Vector3.INF and _flat_distance(_body.global_position, _guard_post) <= 2.0:
+			state = State.GUARDING
 		elif _repath_timer <= 0.0:
 			_request_path(objective)
 		return
@@ -283,7 +346,14 @@ func _update_moving(delta: float) -> void:
 
 func _request_path(destination: Vector3) -> void:
 	_repath_timer = 1.2
-	_path = _nav.find_path(_body.global_position, destination)
+	# Contournement : passer par le point imposé s'il n'est pas déjà atteint.
+	if _via != Vector3.INF and _flat_distance(_body.global_position, _via) > 4.0 and _guard_post == Vector3.INF and not hold_at_objective:
+		_path = _nav.find_path(_body.global_position, _via)
+		_path.append_array(_nav.find_path(_via, destination))
+	else:
+		if _via != Vector3.INF:
+			_via = Vector3.INF
+		_path = _nav.find_path(_body.global_position, destination)
 	_path_index = 1 if _path.size() > 1 else 0
 
 

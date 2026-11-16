@@ -47,6 +47,7 @@ func setup() -> void:
 	_bomb.exploded.connect(_on_bomb_exploded)
 	_bomb.defused.connect(_on_bomb_defused)
 	_wave_timer = first_wave_delay
+	squad.set_objective(_bomb_position)
 	hud.set_objective("Charge posée sur le site %s. Les bots viennent la désamorcer et ripostent : tiens jusqu'à l'explosion (%d s)." % [_site, roundi(fuse_seconds)])
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("BOTS ÉLIMINÉS", "0 · 100 PV")
@@ -68,8 +69,8 @@ func update(delta: float) -> void:
 	_wave_timer -= delta
 	if _wave_timer <= 0.0:
 		_wave_timer = wave_interval / difficulty
-		var brain := spawn_bot(marker("DefenderSpawn"))
-		brain.go_to(_bomb_position, true)
+		# L'escouade décide : le premier désamorce, les suivants le couvrent.
+		spawn_bot(marker("DefenderSpawn"))
 
 	# Un bot arrivé sur la charge la désamorce tant qu'il est en vie et ne combat pas.
 	var someone_defusing := false
@@ -123,6 +124,7 @@ func finalize(report: Dictionary) -> void:
 	add_kpi(report, "CHARGE", "DÉFENDUE" if won else "DÉSAMORCÉE", "site %s" % _site)
 	add_kpi(report, "BOTS ÉLIMINÉS", str(bot_kills), "%d ont atteint la charge" % _reached)
 	add_kpi(report, "DÉSAMORÇAGE ADVERSE MAX", "%.1f s" % _max_defuse, "sur %d s nécessaires" % roundi(defuse_seconds))
+	add_kpi(report, "RELÈVES DU DÉSAMORCEUR", str(squad.defuser_swaps), "%d balles reçues en tir croisé" % crossfire_hits)
 	add_kpi(report, "MORTS", str(deaths), "%d points de dégâts subis" % roundi(damage_taken))
 	add_kpi(report, "TIRS À LA TÊTE", "%d %%" % roundi(Stats.percent(head_hits, head_hits + body_hits)) if hits > 0 else "—", "")
 	add_shooting_kpis(report)
