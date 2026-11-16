@@ -88,7 +88,7 @@ func _process(delta: float) -> void:
 			_pending_timers.remove_at(index)
 	if _map != null and _map.visible:
 		_map.update_state(player.global_position, player.yaw_deg, smoke_positions(), SMOKE_RADIUS,
-				"FUMIGÈNE — clic gauche : poser · clic droit ou 1 : annuler · reste : %s" % _charge_text(Kind.SMOKE))
+				"FUMIGÈNE · clic gauche : poser · %s : fermer · reste %s" % [GameSettings.key_label("util1"), _charge_text(Kind.SMOKE)])
 
 
 func is_map_open() -> bool:
@@ -258,5 +258,7 @@ func _charge_text(kind: int) -> String:
 
 
 func _announce() -> void:
-	hud.show_feedback("1 fumigène (%s) · 2 incendiaire (%s) · 3 flash (%s) — sélection : %s, clic droit pour lancer" % [
-		_charge_text(Kind.SMOKE), _charge_text(Kind.INCENDIARY), _charge_text(Kind.FLASH), str(NAMES[selected])], Hud.COLOR_INFO, 2.2)
+	hud.show_feedback("%s · %s pour lancer  (%s fumigène %s · %s incendiaire %s · %s flash %s)" % [
+		str(NAMES[selected]).to_upper(), GameSettings.key_label("throw"),
+		GameSettings.key_label("util1"), _charge_text(Kind.SMOKE), GameSettings.key_label("util2"), _charge_text(Kind.INCENDIARY),
+		GameSettings.key_label("util3"), _charge_text(Kind.FLASH)], Hud.COLOR_INFO, 2.2)

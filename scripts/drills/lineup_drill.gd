@@ -97,14 +97,14 @@ func _next_target() -> void:
 
 	var saved: Dictionary = PlayerProfile.lineup(str(map_root.name), _target_name)
 	if saved.is_empty():
-		hud.set_objective("Cible %d / %d sur le site %s : fais-y atterrir un incendiaire (2 puis clic droit). Aucun lineup enregistré." % [
-			_target_index, targets_per_session, _site])
+		hud.set_objective("Cible %d / %d · incendiaire dans la zone (%s puis %s)" % [
+			_target_index, targets_per_session, GameSettings.key_label("util2"), GameSettings.key_label("throw")])
 		_stand_marker.visible = false
 	else:
 		var stand := Vector3(float(saved.get("x", 0.0)), 0.0, float(saved.get("z", 0.0)))
 		_stand_marker.position = stand + Vector3(0.0, 0.03, 0.0)
 		_stand_marker.visible = true
-		hud.set_objective("Cible %d / %d. Ton lineup : place-toi sur le disque cyan, orientation %.0f°, inclinaison %.0f°." % [
+		hud.set_objective("Cible %d / %d · lineup connu : disque cyan, %.0f° / %.0f°" % [
 			_target_index, targets_per_session, float(saved.get("yaw", 0.0)), float(saved.get("pitch", 0.0))])
 
 

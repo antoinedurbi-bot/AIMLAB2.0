@@ -45,7 +45,7 @@ func setup() -> void:
 	_center = Vector3(anchor.x, 0.0, anchor.z)
 	player.automatic = true
 	player.recoil_enabled = true
-	hud.set_objective("Élimine les %d cibles de chaque vague en enchaînant : transfère ta rafale de l'une à l'autre." % wave_size)
+	hud.set_objective("Élimine les %d cibles d'une traite" % wave_size)
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("VAGUES", "0")
 	_spawn_wave()

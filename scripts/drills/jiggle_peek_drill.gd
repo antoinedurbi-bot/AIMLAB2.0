@@ -59,7 +59,7 @@ func spawn_marker() -> String:
 
 func setup() -> void:
 	_corner_x = marker("JiggleCorner").x
-	hud.set_objective("Sors du coin juste assez pour voir l'adversaire, puis reviens à couvert avant %d ms. Pas de tir." % roundi(enemy_reaction_ms))
+	hud.set_objective("Vois l'adversaire et reviens en moins de %d ms · pas de tir" % roundi(enemy_reaction_ms))
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("JIGGLES RÉUSSIS", "0")
 	_place_enemy()

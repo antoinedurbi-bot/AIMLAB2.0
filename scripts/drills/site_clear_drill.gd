@@ -12,7 +12,7 @@ var retake: bool = false
 var min_spacing: float = 4.0
 
 ## Si > 0 : une charge explose après ce délai (s). Il faut nettoyer le site puis
-## la désamorcer (ESPACE, immobile au centre du site pendant `defuse_seconds`).
+## la désamorcer (touche « utiliser », immobile au centre du site pendant `defuse_seconds`).
 var charge_seconds: float = 0.0
 var defuse_seconds: float = 7.0
 var defuse_radius: float = 4.0
@@ -65,12 +65,11 @@ func setup() -> void:
 		_bomb.position = marker("Site" + _site)
 		add_child(_bomb)
 	var action := "Reprends" if retake else "Attaque"
-	hud.set_objective("%s le site %s (lettre magenta au-dessus du site) : %d cibles à hauteur de tête y sont cachées." % [action, _site, angle_count])
+	hud.set_objective("%s le site %s · %d cibles" % [action, _site, angle_count])
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("SITE %s" % _site, "0 / %d" % angle_count)
 	if charge_seconds > 0.0:
-		hud.set_objective("Charge posée sur le site %s : nettoie-le (%d cibles), puis ESPACE au centre du site, immobile %d s. Explosion à %d s." % [
-			_site, angle_count, roundi(defuse_seconds), roundi(charge_seconds)])
+		hud.set_objective("Site %s : nettoie (%d cibles), puis désamorce au centre · %s" % [_site, angle_count, GameSettings.key_label("use")])
 
 
 func begin() -> void:

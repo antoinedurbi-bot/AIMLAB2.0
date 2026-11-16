@@ -1,9 +1,8 @@
 # KINETIC // AIM
 
-Entraînement pour FPS tactiques, sous Godot 4 (renderer Forward+). Sept exercices ciblent les
-gestes qui comptent dans un jeu comme Valorant : flicks, micro-ajustements, tenue d'angle,
-contre-strafe, jiggle peek, placement du viseur et décompte de la charge. Chaque session est
-enregistrée à 1000 Hz, analysée, comparée aux précédentes, et se termine par un conseil.
+Entraînement pour FPS tactiques, sous Godot 4 (renderer Forward+) : visée, déplacement, duels
+contre des bots, charge et sites. Chaque session est enregistrée à 1000 Hz, analysée, comparée
+aux précédentes, et se termine par un conseil.
 
 ## Lancer le projet
 
@@ -24,17 +23,33 @@ godot --editor --path .
 godot --path .
 ```
 
+## Lobby
+
+Quatre pages, peu de texte sur chacune :
+
+- **Accueil** : routine du jour (avancement et bouton « Continuer »), diagnostic, accès libre.
+- **Jouer** : les exercices en cartes, triés en quatre catégories — Visée, Déplacement, Duels,
+  Charge et sites. Une carte peut avoir des variantes (Flicks : larges ou micro ; Duel : proche
+  ou longue distance ; Site : attaque, reprise ou désamorçage ; Utilitaires : lineups ou
+  exploration). Le panneau de droite choisit la variante et la carte, puis lance.
+- **Profil** : radar, notes du diagnostic, routine détaillée.
+- **Réglages** : onglets Souris, Réticule, Touches, Vidéo, Jeu.
+
 ## Contrôles
 
-| Action | Touche |
+Toutes les touches se changent dans **Réglages → Touches** : clique l'action, appuie sur la
+touche ou le bouton de souris. Deux actions ne peuvent pas partager une touche (elles
+s'échangent). Les touches sont physiques : ZQSD sur AZERTY correspond à WASD sur QWERTY.
+
+| Action | Par défaut |
 | --- | --- |
-| Viser | Souris (capturée pendant la session) |
+| Se déplacer | ZQSD / WASD |
+| Marcher · s'accroupir · sauter | Maj · Ctrl · Espace |
 | Tirer | Clic gauche |
-| Se déplacer | ZQSD sur AZERTY, WASD sur QWERTY (touches physiques) |
-| Marcher | Maj |
-| Valider (chrono de la charge) | Espace |
-| Abandonner la session / revenir au menu | Échap |
-| Plein écran | F11 |
+| Utiliser / désamorcer | F |
+| Fumigène (mini-carte) · incendiaire · flash | 1 · 2 · 3 |
+| Lancer l'utilitaire | Clic droit |
+| Menu · plein écran (fixes) | Échap · F11 |
 
 Perdre le focus de la fenêtre pendant une session l'annule (les statistiques seraient faussées).
 
@@ -61,8 +76,8 @@ Perdre le focus de la fenêtre pendant une session l'annule (les statistiques se
 
 - **Armes** (`scripts/weapons.gd`) : fusil automatique, mitraillette, pistolet semi-automatique,
   avec cadence, recul et dégâts propres. Profils génériques, choisis dans le menu.
-- **Accroupi (Ctrl)** : caméra plus basse, déplacement lent, recul réduit de 20 %.
-  **Saut (Espace)** : un tir en l'air est aussi imprécis qu'à pleine vitesse.
+- **Accroupi** : caméra plus basse, déplacement lent, recul et dispersion réduits de 20 %.
+  **Saut** : un tir en l'air part n'importe où.
 - **Bruits de pas** : courir s'entend, marcher ou s'accroupir non ; la distance parcourue en
   faisant du bruit est enregistrée.
 - **Tap et rafales** : cible lointaine, longueur moyenne des rafales mesurée.
@@ -70,8 +85,6 @@ Perdre le focus de la fenêtre pendant une session l'annule (les statistiques se
   ou large, re-sorties.
 - **Cibles multiples** : vagues de trois silhouettes ; temps de transfert, transferts dans la
   même rafale.
-- **Localisation au son** : signal spatialisé à situer ; erreur angulaire, confusions
-  gauche / droite et avant / arrière.
 - **Désamorçage** : reprise de site avec une charge de 45 s à désamorcer en 7 s.
 - **Charge** (`scenes/bomb.tscn`, `scripts/bomb.gd`) : objet posé au centre d'un site, qui
   clignote et bipe de plus en plus vite (son spatialisé) ; le ton du bip change quand quelqu'un
@@ -132,7 +145,7 @@ précis.
 | **Strafe / contre-strafe** | S'arrêter net avant de tirer | Couloir de strafe | Vitesse au tir, temps d'arrêt, méthode d'arrêt, délai entre touches, trop tôt / trop tard |
 | **Jiggle peek** | Prendre une information sans se faire toucher | Hall d'angles | Durée d'exposition, sorties sans information, dépassement, régularité |
 | **Pré-visée** | Placement du viseur en nettoyant des angles | Parcours | Erreur de pré-visée (verticale et horizontale), temps pour abattre, tirs en mouvement |
-| **Chrono de la charge** | Compter de tête depuis la pose | Stand de tir | Erreur par manche, biais, rythme interne, effet de la pression |
+| **Dernière seconde** | Lire le rythme des bips d'une charge | Stand de tir | Écart au dernier instant possible, explosions, effet de la pression |
 
 | **Attaque de site** | Entrer sur un site et nettoyer chaque angle | Grande carte au choix | Erreur de pré-visée, temps pour abattre, tirs en mouvement |
 | **Reprise de site** | Revenir du spawn défenseur et reprendre un site | Grande carte au choix | Idem, départ côté défense |
@@ -144,24 +157,29 @@ revient à écrire un script et une entrée de catalogue.
 
 ### Déplacement et précision
 
-Le joueur se déplace selon un modèle friction + accélération proche d'un FPS tactique : 5,4 m/s
-en course, 2,9 m/s en marche, pleine vitesse atteinte en moins de 0,2 s. Un tir n'est précis
-que sous **1,5 m/s** ; au-dessus, il est dévié d'autant plus que la vitesse est grande. Deux
-façons de s'arrêter, mesurées séparément :
+Le déplacement vise le ressenti d'un FPS tactique moderne comme Valorant (`scripts/player.gd`) :
 
-- relâcher la touche : précis au bout d'environ 120 ms ;
-- contre-strafe (tape sur la touche opposée) : précis au bout d'environ 40 ms, à condition de
-  relâcher la touche opposée avant de repartir dans l'autre sens.
+| | Valeur |
+| --- | --- |
+| Course | 5,4 m/s au fusil, 5,73 m/s à la mitraillette et au pistolet |
+| Marche · accroupi | 54 % · 45 % de la course, silencieux |
+| Départ | pleine vitesse en ~160 ms |
+| Arrêt en relâchant | tir précis après ~85 ms |
+| Contre-strafe | tir précis après ~50 ms |
+| Tir précis | sous 1,5 m/s ; au-delà, déviation croissante ; en l'air, jusqu'à 8° |
+| Première balle | dispersion propre à l'arme (0,25° au fusil), −20 % accroupi |
+| Saut | 0,78 m, aucun gain de vitesse en l'air, ralentissement à l'atterrissage |
+| Balle reçue | vitesse réduite à 30 %, rétablie en 0,5 s |
 
-Ces valeurs sont une approximation, pas la copie d'un jeu : elles se règlent en tête de
-`scripts/player.gd`.
+L'arrêt est franc même sans contre-strafe, qui reste un peu plus rapide. Ces valeurs sont des
+estimations réglables en tête du fichier, pas des mesures du jeu.
 
-### Chrono de la charge
+### Dernière seconde
 
-Quatre manches : 10 s et 20 s au calme, puis 20 s et 38 s en abattant des cibles. Au bip, la
-charge est posée ; il faut appuyer sur Espace à l'instant demandé, sans chronomètre. 38 s est le
-dernier instant pour lancer un désamorçage de 7 s sur une charge de 45 s. Les durées se changent
-dans `charge_timer_drill.gd` (`rep_seconds`, `rep_distraction`).
+Une charge armée est posée devant toi : elle clignote et bipe de plus en plus vite, sans
+chronomètre. Lance le désamorçage (touche « utiliser ») le plus tard possible ; il dure 7 s.
+Repère : les bips passent à quatre par seconde 10 s avant l'explosion, il reste alors 3 s pour
+lancer. Deux manches de 45 s, la seconde en abattant des cibles.
 
 ## Cartes
 
@@ -302,7 +320,8 @@ scripts/
 ui/
   hud.tscn                    Réticule, score, chrono, objectif, retour, jauge de vitesse
   stats_dashboard.tscn        Rapport : coach, KPI, graphique, flicks, heatmap, données
-  main_menu.tscn              Choix de l'exercice et réglages
+  main_menu.tscn              Lobby : accueil, exercices par catégorie, profil
+  settings_panel.gd           Réglages par onglets, dont les touches
   bar_chart.gd, heatmap.gd, flick_bar.gd, speed_gauge.gd, crosshair.gd, kinetic_theme.tres
 materials/, shaders/, environment/
 ```

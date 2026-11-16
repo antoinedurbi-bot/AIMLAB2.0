@@ -223,6 +223,7 @@ func _on_bot_shot(hit: bool, head: bool, origin: Vector3, end_point: Vector3) ->
 	if not hit:
 		return
 	var damage := BOT_HEAD_DAMAGE if head else BOT_BODY_DAMAGE
+	player.apply_tag()
 	bot_hits += 1
 	if squad.engaging_count() >= 2:
 		crossfire_hits += 1

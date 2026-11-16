@@ -50,7 +50,7 @@ func setup() -> void:
 	_time_limit = base_time_limit / difficulty
 	player.automatic = true
 	player.recoil_enabled = true
-	hud.set_objective("Élimine la cible avant %.1f s. Tête = un tir. Arrête-toi pour tirer et contrôle ta rafale." % _time_limit)
+	hud.set_objective("Élimine la cible en %.1f s · arrête-toi pour tirer" % _time_limit)
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("DUELS", "0 gagnés · 0 perdus")
 	_spawn_enemy()

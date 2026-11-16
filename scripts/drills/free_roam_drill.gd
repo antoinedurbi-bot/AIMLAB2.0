@@ -6,12 +6,16 @@ func uses_movement() -> bool:
 	return true
 
 
+func ends_on_cancel() -> bool:
+	return true
+
+
 func spawn_marker() -> String:
 	return "AttackerSpawn"
 
 
 func setup() -> void:
-	hud.set_objective("Exploration libre : repère les trajets, les angles et les sites. Échap pour terminer.")
+	hud.set_objective("Exploration libre · Échap pour terminer")
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("DISTANCE", "0 m")
 

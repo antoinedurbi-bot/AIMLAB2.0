@@ -28,7 +28,7 @@ func setup() -> void:
 			_patrol_points.append(marker("Lobby%s" % letter))
 	_patrol_points.append(marker("DefenderSpawn"))
 	squad.waypoints = _patrol_points
-	hud.set_objective("Des bots te traquent. Ils t'entendent courir (Maj pour marcher) et tirent par rafales : punis-les pendant qu'ils sont à l'arrêt.")
+	hud.set_objective("Élimine les bots · %s pour marcher sans bruit" % GameSettings.key_label("walk"))
 	hud.set_speed_gauge_visible(true)
 	_refresh_side_stat()
 

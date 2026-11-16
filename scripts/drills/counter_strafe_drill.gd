@@ -47,7 +47,7 @@ func spawn_marker() -> String:
 
 func setup() -> void:
 	_center = marker("TargetCenter")
-	hud.set_objective("Strafe à pleine vitesse, arrête-toi (touche opposée), puis tire. Un tir en mouvement est dévié.")
+	hud.set_objective("Strafe, arrête-toi, tire")
 	hud.set_speed_gauge_visible(true)
 	_fill_grid()
 

@@ -13,6 +13,7 @@ const BarChart := preload("res://ui/bar_chart.gd")
 ## Délai avant d'activer les boutons : évite qu'un clic de fin de session ne
 ## relance ou ne ferme le rapport par accident.
 const INPUT_LOCK_SECONDS := 0.6
+const MAX_KPI_CARDS := 6
 const TONE_COLORS := {
 	"fix": Color(1.0, 0.45, 0.6),
 	"good": Color(0.3, 1.0, 0.72),
@@ -104,7 +105,7 @@ func _fill_header(drill_title: String, report: Dictionary, previous: Array[Dicti
 	_subtitle.text = "%s · %d s" % [drill_title, roundi(elapsed)]
 	_score_value.text = str(score)
 	if previous.is_empty():
-		_score_trend.text = "SCORE · première session de cet exercice"
+		_score_trend.text = "SCORE · première session"
 		return
 	var best := 0
 	var total := 0
@@ -114,7 +115,7 @@ func _fill_header(drill_title: String, report: Dictionary, previous: Array[Dicti
 		total += past_score
 	@warning_ignore("integer_division")
 	var average := total / previous.size()
-	_score_trend.text = "SCORE · record %d · moyenne des %d dernières : %d" % [best, previous.size(), average]
+	_score_trend.text = "SCORE · record %d · moyenne %d" % [best, average]
 
 
 func _fill_coach(advice: Array[Dictionary]) -> void:
@@ -135,8 +136,8 @@ func _fill_coach(advice: Array[Dictionary]) -> void:
 	_coach_text.text = parts[0]
 	_coach_action.text = parts[1] if parts[1] != "" else "Continue ainsi."
 
-	# Pistes secondaires : une carte par conseil, côte à côte.
-	for index in range(1, advice.size()):
+	# Pistes secondaires : deux au plus, réduites au titre et au constat.
+	for index in range(1, mini(advice.size(), 3)):
 		var item := advice[index]
 		var item_tone: String = item.get("tone", "info")
 		var item_color: Color = TONE_COLORS.get(item_tone, Color.WHITE)
@@ -152,7 +153,7 @@ func _fill_coach(advice: Array[Dictionary]) -> void:
 		title_label.add_theme_font_size_override(&"font_size", 17)
 		box.add_child(title_label)
 		var text_label := Label.new()
-		text_label.text = str(item.get("text", ""))
+		text_label.text = _split_advice(str(item.get("text", "")))[0]
 		text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		text_label.custom_minimum_size.x = 300.0
 		text_label.add_theme_font_size_override(&"font_size", 14)
@@ -179,7 +180,8 @@ func _fill_kpis(report: Dictionary) -> void:
 		_kpi_grid.remove_child(child)
 		child.queue_free()
 	var kpis: Array = report.get("kpis", [])
-	for item: Variant in kpis:
+	# Six cartes au plus : le reste se lit dans « toutes les données ».
+	for item: Variant in kpis.slice(0, MAX_KPI_CARDS):
 		if item is Dictionary:
 			var kpi: Dictionary = item
 			var label: String = kpi.get("label", "")
@@ -253,10 +255,10 @@ func _fill_flicks(report: Dictionary) -> void:
 
 	_flick_bar.set_distribution(float(under_count), float(precise_count), float(over_count))
 	if flicks <= 0:
-		_flick_details.text = "Pas assez de mouvements rapides pour analyser les flicks (amplitude minimale : 3°)."
+		_flick_details.text = "Pas assez de flicks à analyser"
 		return
-	_flick_details.text = "Overflick %.0f %% (%d) · dépassement moyen %.2f°\nUnderflick %.0f %% (%d) · arrêt moyen %.2f° avant la cible\n%d flicks analysés · erreur signée moyenne %+.2f°" % [
-		over_rate, over_count, overshoot, under_rate, under_count, undershoot, flicks, bias]
+	_flick_details.text = "Trop loin %.0f %% (%.1f°) · trop court %.0f %% (%.1f°) · %d flicks, biais %+.1f°" % [
+		over_rate, overshoot, under_rate, undershoot, flicks, bias]
 
 
 func _fill_smoothness(report: Dictionary) -> void:
@@ -266,22 +268,21 @@ func _fill_smoothness(report: Dictionary) -> void:
 	if samples <= 0:
 		_smooth_value.text = "— / 100"
 		_smooth_gauge.value = 0.0
-		_smooth_details.text = "Pas assez de mouvements pour estimer la fluidité."
+		_smooth_details.text = "Pas assez de mouvements"
 		return
 	_smooth_value.text = "%d / 100" % roundi(smoothness)
 	_smooth_gauge.value = smoothness
-	_smooth_details.text = "%s Variance de l'accélération angulaire sur %d mouvements (100 = geste idéal). Accélération RMS : %d °/s²." % [
-		_smoothness_label(smoothness), samples, roundi(accel_std)]
+	_smooth_details.text = "%s · %d mouvements, %d °/s² RMS" % [_smoothness_label(smoothness), samples, roundi(accel_std)]
 
 
 func _smoothness_label(smoothness: float) -> String:
 	if smoothness >= 80.0:
-		return "Gestes très fluides."
+		return "Très fluide"
 	if smoothness >= 60.0:
-		return "Gestes fluides, quelques micro-corrections."
+		return "Fluide, quelques corrections"
 	if smoothness >= 40.0:
-		return "Gestes saccadés : plusieurs corrections avant le tir."
-	return "Gestes très irréguliers (jitter)."
+		return "Saccadé : plusieurs corrections avant le tir"
+	return "Très irrégulier"
 
 
 func _fill_heatmap(report: Dictionary) -> void:
@@ -291,15 +292,14 @@ func _fill_heatmap(report: Dictionary) -> void:
 	var distance: float = report.get("avg_miss_distance_deg", 0.0)
 	_heatmap.set_data(misses, hits)
 	if misses.is_empty():
-		_heat_legend.text = "Aucun tir raté analysable. Les points cyan sont les tirs réussis."
+		_heat_legend.text = "Aucun tir raté"
 		return
-	_heat_legend.text = "%d tirs ratés (magenta), réussis en cyan. Écart moyen %.2f°. Biais : %s. Échelle en rayons de cible (R)." % [
-		misses.size(), distance, _bias_text(bias)]
+	_heat_legend.text = "%d ratés · écart %.1f° · %s" % [misses.size(), distance, _bias_text(bias)]
 
 
 func _bias_text(bias: Vector2) -> String:
 	if bias.length() < 0.15:
-		return "aucun biais marqué"
+		return "pas de biais"
 	var parts := PackedStringArray()
 	if absf(bias.x) >= 0.1:
 		parts.append("%.2f° à %s" % [absf(bias.x), "droite" if bias.x > 0.0 else "gauche"])
@@ -357,10 +357,5 @@ func _format_value(value: Variant) -> String:
 
 
 func _fill_footer(report: Dictionary) -> void:
-	var sample_count: int = report.get("sample_count", 0)
 	var sample_rate: float = report.get("sample_rate_hz", 0.0)
-	var input_rate: float = report.get("input_rate_hz", 0.0)
-	var mouse_distance: float = report.get("mouse_distance_cm", 0.0)
-	_footer_info.text = "%d échantillons à %d Hz · visée rafraîchie à ~%d Hz · souris : %.1f m parcourus · %.1f cm/360° à %d DPI" % [
-		sample_count, roundi(sample_rate), roundi(input_rate), mouse_distance / 100.0,
-		GameSettings.cm_per_360, roundi(GameSettings.dpi)]
+	_footer_info.text = "%.1f cm/360° · %d DPI · télémétrie %d Hz" % [GameSettings.cm_per_360, roundi(GameSettings.dpi), roundi(sample_rate)]

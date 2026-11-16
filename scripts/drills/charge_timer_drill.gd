@@ -1,36 +1,44 @@
 extends "res://scripts/drills/drill_base.gd"
-## Chrono de la charge : entraîne l'horloge interne. À chaque manche, un bip
-## marque la pose de la charge ; le joueur doit appuyer sur ESPACE à l'instant
-## exact demandé, sans aucun chronomètre à l'écran. Les dernières manches se
-## jouent « sous pression » : des cibles à abattre détournent l'attention,
-## comme en plein combat.
+## Dernière seconde : une charge armée est posée devant toi. Elle clignote et
+## bipe de plus en plus vite ; aucun chronomètre n'est affiché. Lance le
+## désamorçage (touche « utiliser ») le plus tard possible : il dure
+## `defuse_seconds`, et une fois lancé il va jusqu'au bout. Trop tard, elle explose.
 ##
-## Repère utile : sur une charge de 45 s avec un désamorçage de 7 s, 38 s est le
-## dernier instant pour commencer à désamorcer.
+## Repère : sur 45 s avec 7 s de désamorçage, le dernier instant est 38 s. Les
+## bips passent à quatre par seconde 10 s avant l'explosion : c'est le signal.
+## La seconde manche se joue en abattant des cibles, comme en plein combat.
 ##
-## Mesures : erreur signée de chaque manche, biais (trop tôt / trop tard),
-## rythme interne (rapport temps estimé / temps réel) et effet de la distraction.
+## Mesures : instant du lancement, marge restante, écart au dernier instant
+## possible (négatif = trop tôt, positif = trop tard), explosions, effet de la pression.
 
-enum Phase { BRIEFING, COUNTING, RESULT }
+enum Phase { BRIEFING, ARMED, RESULT }
 
-## Durée à estimer pour chaque manche (s) et présence de cibles de distraction.
-var rep_seconds: PackedFloat32Array = PackedFloat32Array([10.0, 20.0, 20.0, 38.0])
-var rep_distraction: Array = [false, false, true, true]
-var briefing_seconds: float = 3.5
-var result_seconds: float = 2.8
+const Bomb := preload("res://scripts/bomb.gd")
+const BOMB_SCENE: PackedScene = preload("res://scenes/bomb.tscn")
+
+var fuse_seconds: float = 45.0
+var defuse_seconds: float = 7.0
+## Une entrée par manche : vrai = cibles de distraction.
+var rep_distraction: Array = [false, true]
+var briefing_seconds: float = 3.0
+var result_seconds: float = 3.0
+var bomb_distance: float = 5.0
 var distraction_radius: float = 0.34
 var distraction_distance: float = 10.0
 
 var _phase: int = Phase.BRIEFING
 var _rep: int = -1
 var _timer: float = 0.0
-var _count_start_usec: int = 0
+var _bomb: Bomb
+var _defusing: bool = false
+var _start_seconds: float = 0.0
+var _under_pressure: bool = false
 var _distraction_targets: Array[AimTarget] = []
 var _distraction_kills: int = 0
+var _explosions: int = 0
 
-## Erreur signée de chaque manche (s) : négatif = trop tôt, positif = trop tard.
+## Écart au dernier instant possible, par manche (s) : négatif = trop tôt.
 var _errors: PackedFloat32Array = PackedFloat32Array()
-## Rapport temps estimé / temps réel de chaque manche.
 var _ratios: PackedFloat32Array = PackedFloat32Array()
 var _calm_errors: PackedFloat32Array = PackedFloat32Array()
 var _pressure_errors: PackedFloat32Array = PackedFloat32Array()
@@ -41,8 +49,20 @@ func shows_clock() -> bool:
 
 
 func setup() -> void:
-	hud.set_objective("Compte de tête. Aucun chronomètre : seul ton rythme interne compte.")
-	hud.set_side_stat("ERREUR MOYENNE", "—")
+	_bomb = BOMB_SCENE.instantiate() as Bomb
+	_bomb.fuse_seconds = fuse_seconds
+	_bomb.defuse_seconds = defuse_seconds
+	add_child(_bomb)
+	# Posée au sol devant le joueur : un rayon vers le bas trouve le sol.
+	var above := player.eye_position() + Vector3(0.0, 0.0, -bomb_distance)
+	var query := PhysicsRayQueryParameters3D.create(above, above + Vector3(0.0, -20.0, 0.0), WORLD_MASK)
+	var ground := get_world_3d().direct_space_state.intersect_ray(query)
+	var floor_point: Vector3 = ground.get("position", above + Vector3(0.0, -1.7, 0.0))
+	_bomb.global_position = floor_point
+	_bomb.exploded.connect(_on_exploded)
+	_bomb.defused.connect(_on_defused)
+	hud.set_objective("Désamorce au dernier moment · %s" % GameSettings.key_label("use"))
+	hud.set_side_stat("MARGE", "—")
 	hud.set_clock_text("—")
 
 
@@ -55,29 +75,32 @@ func update(delta: float) -> void:
 		Phase.BRIEFING:
 			_timer -= delta
 			if _timer <= 0.0:
-				_start_counting()
-		Phase.COUNTING:
-			# Oubli manifeste : on valide d'office bien après l'instant demandé.
-			var target_seconds := rep_seconds[_rep]
-			if _counted_seconds() > target_seconds * 1.6 + 4.0:
-				_commit()
+				_arm()
+		Phase.ARMED:
+			_bomb.set_defusing(_defusing, true)
+			if _defusing:
+				hud.set_clock_text("%.1f / %d s" % [_bomb.defuse_progress, roundi(defuse_seconds)])
 		Phase.RESULT:
 			_timer -= delta
 			if _timer <= 0.0:
-				if _rep + 1 >= rep_seconds.size():
+				if _rep + 1 >= rep_distraction.size():
 					finished = true
 				else:
 					_start_briefing(_rep + 1)
 
 
 func on_action() -> void:
-	if _phase == Phase.COUNTING:
-		_commit()
+	if _phase != Phase.ARMED or _defusing:
+		return
+	_defusing = true
+	_start_seconds = fuse_seconds - _bomb.time_left
+	Sfx.play(&"tick")
+	hud.show_feedback("DÉSAMORÇAGE…", Hud.COLOR_INFO, defuse_seconds)
+	Telemetry.log_event("defuse_start", {"rep": _rep, "at_s": _start_seconds, "pressure": _under_pressure})
 
 
 func on_shot(collider: Object, hit_position: Vector3, hit_normal: Vector3, shot: Dictionary) -> void:
-	# Les tirs ne comptent que pendant les manches sous pression.
-	if _phase != Phase.COUNTING or _distraction_targets.is_empty():
+	if _phase != Phase.ARMED or _distraction_targets.is_empty():
 		return
 	shots += 1
 	var target := collider as AimTarget
@@ -102,34 +125,32 @@ func on_shot(collider: Object, hit_position: Vector3, hit_normal: Vector3, shot:
 
 
 func finalize(report: Dictionary) -> void:
+	if _bomb != null:
+		_bomb.stop()
 	var mean_abs := Stats.mean_abs(_errors)
 	var mean_signed := Stats.mean(_errors)
-	var rate_percent := (Stats.mean(_ratios) - 1.0) * 100.0 if not _ratios.is_empty() else 0.0
 	var calm_abs := Stats.mean_abs(_calm_errors)
 	var pressure_abs := Stats.mean_abs(_pressure_errors)
 	var last_error := _errors[_errors.size() - 1] if not _errors.is_empty() else 0.0
 	report["timer_reps"] = _errors.size()
 	report["timer_mean_abs_error_s"] = mean_abs
 	report["timer_mean_signed_error_s"] = mean_signed
-	report["timer_rate_percent"] = rate_percent
+	report["timer_rate_percent"] = (Stats.mean(_ratios) - 1.0) * 100.0 if not _ratios.is_empty() else 0.0
 	report["timer_calm_abs_error_s"] = calm_abs
 	report["timer_pressure_abs_error_s"] = pressure_abs
 	report["timer_has_pressure_reps"] = not _pressure_errors.is_empty()
 	report["timer_last_error_s"] = last_error
 	report["timer_consistency_percent"] = Stats.deviation(_ratios) * 100.0
+	report["timer_explosions"] = _explosions
 	report["distraction_kills"] = _distraction_kills
 
-	add_kpi(report, "ERREUR MOYENNE", "%.2f s" % mean_abs if not _errors.is_empty() else "—",
-			"écart absolu moyen sur %d manches" % _errors.size())
-	add_kpi(report, "BIAIS", _signed_text(mean_signed) if not _errors.is_empty() else "—", "erreur signée moyenne")
-	add_kpi(report, "RYTHME INTERNE", "%+.1f %%" % rate_percent if not _ratios.is_empty() else "—",
-			"positif = tu comptes trop lentement")
-	add_kpi(report, "AU CALME", "%.2f s" % calm_abs if not _calm_errors.is_empty() else "—", "erreur sans distraction")
-	add_kpi(report, "SOUS PRESSION", "%.2f s" % pressure_abs if not _pressure_errors.is_empty() else "—",
-			"erreur avec cibles · %d abattues" % _distraction_kills)
-	add_kpi(report, "DERNIÈRE MANCHE", _signed_text(last_error) if not _errors.is_empty() else "—",
-			"la plus longue : %d s" % roundi(rep_seconds[rep_seconds.size() - 1]))
-	set_chart(report, "ERREUR PAR MANCHE (s) · négatif = trop tôt", _errors, "s", 0.75, true, true)
+	var none := _errors.is_empty()
+	add_kpi(report, "DÉSAMORCÉES", "%d / %d" % [_errors.size() - _explosions, rep_distraction.size()], "%d explosion(s)" % _explosions)
+	add_kpi(report, "ÉCART MOYEN", "—" if none else "%.1f s" % mean_abs, "au dernier instant possible")
+	add_kpi(report, "TENDANCE", "—" if none else _signed_text(mean_signed), "")
+	add_kpi(report, "AU CALME", "—" if _calm_errors.is_empty() else "%.1f s" % calm_abs, "")
+	add_kpi(report, "SOUS PRESSION", "—" if _pressure_errors.is_empty() else "%.1f s" % pressure_abs, "%d cibles abattues" % _distraction_kills)
+	set_chart(report, "ÉCART PAR MANCHE (s) · négatif = trop tôt", _errors, "s", 1.5, true, true)
 	set_panels(report, ["chart"])
 
 
@@ -137,75 +158,78 @@ func finalize(report: Dictionary) -> void:
 
 func _signed_text(seconds: float) -> String:
 	if absf(seconds) < 0.05:
-		return "pile à l'heure"
-	return "%.2f s trop %s" % [absf(seconds), "tard" if seconds > 0.0 else "tôt"]
-
-
-func _counted_seconds() -> float:
-	return float(Time.get_ticks_usec() - _count_start_usec) / 1000000.0
+		return "pile"
+	return "%.1f s trop %s" % [absf(seconds), "tard" if seconds > 0.0 else "tôt"]
 
 
 func _start_briefing(rep_index: int) -> void:
 	_rep = rep_index
 	_phase = Phase.BRIEFING
 	_timer = briefing_seconds
-	var under_pressure: bool = rep_distraction[_rep] if _rep < rep_distraction.size() else false
-	var context := " · sous pression : abats les cibles en comptant" if under_pressure else ""
-	hud.set_clock_text("MANCHE %d/%d" % [_rep + 1, rep_seconds.size()])
-	hud.set_objective("Au bip, la charge est posée. Appuie sur ESPACE quand %d s se sont écoulées%s." % [
-		roundi(rep_seconds[_rep]), context])
+	_defusing = false
+	_under_pressure = bool(rep_distraction[_rep])
+	hud.set_clock_text("MANCHE %d/%d" % [_rep + 1, rep_distraction.size()])
+	if _under_pressure:
+		hud.set_objective("Même chose en abattant les cibles · %s" % GameSettings.key_label("use"))
 
 
-func _start_counting() -> void:
-	_phase = Phase.COUNTING
-	_count_start_usec = Time.get_ticks_usec()
+func _arm() -> void:
+	_phase = Phase.ARMED
+	_bomb.arm()
 	Sfx.play(&"go")
-	hud.show_feedback("CHARGE POSÉE", Hud.COLOR_INFO)
-	hud.set_objective("ESPACE à %d s." % roundi(rep_seconds[_rep]))
-	Telemetry.log_event("count_start", {"rep": _rep, "target_s": rep_seconds[_rep]})
-	var under_pressure: bool = rep_distraction[_rep] if _rep < rep_distraction.size() else false
-	if under_pressure:
+	hud.show_feedback("CHARGE ARMÉE", Hud.COLOR_BAD)
+	hud.set_clock_text("?")
+	Telemetry.log_event("charge_armed", {"rep": _rep, "fuse_s": fuse_seconds})
+	if _under_pressure:
 		for index in 3:
 			_spawn_distraction()
 
 
-func _commit() -> void:
-	var target_seconds := rep_seconds[_rep]
-	var counted := _counted_seconds()
-	var error := counted - target_seconds
-	var under_pressure := not _distraction_targets.is_empty()
+func _on_defused(_by_player: bool) -> void:
+	var margin := _bomb.time_left
+	score += 100 + roundi(400.0 * clampf(1.0 - margin / 10.0, 0.0, 1.0))
+	hud.set_side_stat("MARGE", "%.1f s" % margin)
+	hud.show_feedback("DÉSAMORCÉE · %.1f s de marge" % margin, Hud.COLOR_GOOD, result_seconds)
+	Sfx.play(&"success")
+	_end_rep()
+
+
+func _on_exploded() -> void:
+	_explosions += 1
+	fx.explosion(_bomb.global_position + Vector3(0.0, 0.5, 0.0))
+	var text := "EXPLOSION · jamais lancé"
+	if _defusing:
+		text = "EXPLOSION · lancé %.1f s trop tard" % (_start_seconds - (fuse_seconds - defuse_seconds))
+	else:
+		_start_seconds = fuse_seconds
+	hud.set_side_stat("MARGE", "0 s")
+	hud.show_feedback(text, Hud.COLOR_BAD, result_seconds)
+	Sfx.play(&"fail")
+	_end_rep()
+
+
+func _end_rep() -> void:
+	var ideal := fuse_seconds - defuse_seconds
+	var error := _start_seconds - ideal
 	_errors.append(error)
-	_ratios.append(counted / target_seconds)
-	if under_pressure:
+	_ratios.append(_start_seconds / ideal)
+	if _under_pressure:
 		_pressure_errors.append(error)
 	else:
 		_calm_errors.append(error)
-	Telemetry.log_event("count_commit", {
-		"rep": _rep, "target_s": target_seconds, "counted_s": counted, "error_s": error, "pressure": under_pressure,
-	})
-
-	# Tolérance proportionnelle à la durée : 250 points au mieux, 0 au-delà de trois tolérances.
-	var tolerance := 0.5 + 0.05 * target_seconds
-	score += roundi(250.0 * clampf(1.0 - absf(error) / (tolerance * 3.0), 0.0, 1.0))
-	var good := absf(error) <= tolerance
-	hud.show_feedback("%s  (%.2f s pour %d s)" % [_signed_text(error), counted, roundi(target_seconds)],
-			Hud.COLOR_GOOD if good else Hud.COLOR_BAD, result_seconds)
-	hud.set_side_stat("ERREUR MOYENNE", "%.2f s" % Stats.mean_abs(_errors))
-	Sfx.play(&"success" if good else &"fail")
-
-	_clear_distraction()
-	_phase = Phase.RESULT
-	_timer = result_seconds
-
-
-func _spawn_distraction() -> void:
-	var center := player.eye_position() + Vector3(0.0, 0.0, -distraction_distance)
-	var offset := Vector3(rng.randf_range(-3.0, 3.0), rng.randf_range(-1.6, 1.6), 0.0)
-	_distraction_targets.append(spawn_target(center + offset, distraction_radius))
-
-
-func _clear_distraction() -> void:
+	Telemetry.log_event("charge_result", {"rep": _rep, "start_s": _start_seconds, "error_s": error, "pressure": _under_pressure})
 	for target in _distraction_targets:
 		if is_instance_valid(target):
 			target.destroy()
 	_distraction_targets.clear()
+	_defusing = false
+	_bomb.set_defusing(false, true)
+	_phase = Phase.RESULT
+	_timer = result_seconds
+	hud.set_clock_text("—")
+
+
+func _spawn_distraction() -> void:
+	var center := player.eye_position() + Vector3(0.0, 0.0, -distraction_distance)
+	var offset := Vector3(rng.randf_range(-3.0, 3.0), rng.randf_range(-0.4, 1.8), 0.0)
+	_distraction_targets.append(spawn_target(center + offset, distraction_radius))

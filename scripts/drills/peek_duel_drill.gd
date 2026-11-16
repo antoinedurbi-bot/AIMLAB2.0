@@ -49,7 +49,7 @@ func setup() -> void:
 	_reaction_ms = enemy_reaction_ms / difficulty
 	player.automatic = true
 	player.recoil_enabled = true
-	hud.set_objective("L'adversaire riposte %d ms après t'avoir vu. Sors du coin, élimine-le, ou reviens à couvert." % roundi(_reaction_ms))
+	hud.set_objective("Sors, élimine, ou reviens à couvert · riposte en %d ms" % roundi(_reaction_ms))
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("DUELS", "0 gagnés · 0 perdus")
 	_place_enemy()

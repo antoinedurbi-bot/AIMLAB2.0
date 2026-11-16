@@ -58,8 +58,6 @@ static func build_advice(drill_id: String, report: Dictionary, previous: Array[D
 			_peek_duel_rules(advice, report)
 		"multi_target":
 			_multi_target_rules(advice, report)
-		"sound_locate":
-			_sound_rules(advice, report)
 		"defuse":
 			_pre_aim_rules(advice, report)
 			if not bool(report.get("defused", false)):
@@ -251,13 +249,13 @@ static func _counter_strafe_rules(advice: Array[Dictionary], report: Dictionary)
 				"%d tirs partis trop tôt : vitesse moyenne au tir de %.1f m/s alors que le tir n'est précis qu'en dessous de 1,5 m/s. Donne un coup bref sur la touche opposée, puis tire : compte « stop, clic » plutôt que de tout faire en même temps." % [too_early, speed], TONE_FIX)
 	elif clean_rate < 70.0:
 		_add(advice, 86.0, "Tu tiens la touche opposée trop longtemps",
-				"%d tirs sont partis alors que tu repartais déjà dans l'autre sens. Le contre-strafe est une tape de 50 à 80 ms, pas un appui : relâche la touche opposée avant de cliquer." % too_late, TONE_FIX)
+				"%d tirs sont partis alors que tu repartais déjà dans l'autre sens. Le contre-strafe est une tape d'environ 50 ms, pas un appui : relâche la touche opposée avant de cliquer." % too_late, TONE_FIX)
 	elif too_late >= 4 and too_late > too_early:
 		_add(advice, 64.0, "Quelques contre-strafes trop appuyés",
 				"%d tirs déviés parce que tu repartais en sens inverse. Raccourcis la tape sur la touche opposée." % too_late, TONE_FIX)
 
 	if counter_stops + release_stops >= 8 and counter_stops * 5 < (counter_stops + release_stops) * 2:
-		var detail := "La touche opposée freine bien plus fort que la simple friction."
+		var detail := "La touche opposée freine presque deux fois plus vite que le simple relâchement."
 		if counter_ms > 0.0 and release_ms > 0.0:
 			detail = "Sur tes tirs propres : arrêt en %d ms avec contre-strafe contre %d ms en relâchant." % [roundi(counter_ms), roundi(release_ms)]
 		_add(advice, 66.0, "Tu t'arrêtes en relâchant seulement",
@@ -355,38 +353,30 @@ static func _pre_aim_rules(advice: Array[Dictionary], report: Dictionary) -> voi
 
 static func _timer_rules(advice: Array[Dictionary], report: Dictionary) -> void:
 	var reps := _count(report, "timer_reps")
-	var rate := _number(report, "timer_rate_percent")
-	var mean_abs := _number(report, "timer_mean_abs_error_s")
+	var explosions := _count(report, "timer_explosions")
+	var signed := _number(report, "timer_mean_signed_error_s")
 	var calm := _number(report, "timer_calm_abs_error_s")
 	var pressure := _number(report, "timer_pressure_abs_error_s")
-	var last_error := _number(report, "timer_last_error_s")
-	var consistency := _number(report, "timer_consistency_percent")
 
 	if reps < 2:
-		_add(advice, 95.0, "Termine les manches",
-				"Une seule manche jouée. Fais la série complète : c'est la comparaison entre les durées qui révèle ton rythme interne.", TONE_FIX)
+		_add(advice, 95.0, "Termine les deux manches",
+				"Une seule manche jouée. La seconde, sous pression, montre si tu gardes le rythme en tirant.", TONE_FIX)
 		return
-	if absf(rate) >= 4.0:
-		var fast := rate < 0.0
-		_add(advice, 90.0, "Tu comptes trop %s" % ("vite" if fast else "lentement"),
-				"Ton rythme interne est décalé de %+.1f %% : sur 38 s, cela fait environ %.1f s %s. %s Refais l'exercice jusqu'à passer sous 3 %%." % [
-					rate, absf(rate) * 0.38, "d'avance" if fast else "de retard",
-					"Allonge chaque seconde en articulant « mille un, mille deux »." if fast else "Raccourcis ton décompte : compte sur un tempo régulier, par exemple en tapant du pied."], TONE_FIX)
-	if bool(report.get("timer_has_pressure_reps", false)) and pressure - calm >= 0.6:
-		_add(advice, 82.0, "Tu perds le fil sous pression",
-				"Erreur de %.2f s au calme contre %.2f s en abattant des cibles. Ancre ton décompte sur des paliers (5, 10, 15...) que tu te répètes entre deux tirs, au lieu de compter chaque seconde." % [calm, pressure], TONE_FIX)
-	if consistency > 6.0 and reps >= 3:
-		_add(advice, 60.0, "Décompte irrégulier",
-				"Ton rythme varie de ± %.1f %% d'une manche à l'autre : tantôt trop vite, tantôt trop lent. Utilise toujours la même méthode de comptage pour stabiliser ton tempo." % consistency, TONE_FIX)
-	if last_error > 0.5:
-		_add(advice, 70.0, "Trop tard sur la manche longue",
-				"%.2f s de retard sur la dernière manche. Sur un désamorçage, ce retard ne se rattrape pas : dans le doute, engage une seconde plus tôt que ton estimation." % last_error, TONE_FIX)
-	elif last_error < -2.0:
-		_add(advice, 56.0, "Trop de marge sur la manche longue",
-				"%.2f s d'avance sur la dernière manche : c'est sûr, mais ce sont des secondes que tu n'utilises pas pour te replacer. Cherche à réduire cette marge sous 1 s." % absf(last_error), TONE_INFO)
-	if mean_abs < 0.6 and absf(rate) < 4.0:
-		_add(advice, 36.0, "Horloge interne fiable",
-				"Erreur moyenne de %.2f s seulement. Tu peux te fier à ton décompte en partie : entretiens-le en comptant systématiquement à chaque pose." % mean_abs, TONE_GOOD)
+	if explosions > 0:
+		_add(advice, 92.0, "La charge a explosé",
+				"%d explosion(s). Le signal à retenir : les bips passent à quatre par seconde 10 s avant la fin. Lance le désamorçage dans les 3 s qui suivent, jamais après." % explosions, TONE_FIX)
+	elif signed < -6.0:
+		_add(advice, 80.0, "Tu désamorces beaucoup trop tôt",
+				"Lancé %.1f s avant le dernier instant possible. En match, ce temps sert à nettoyer le site : attends que les bips doublent une seconde fois avant de lancer." % absf(signed), TONE_FIX)
+	elif signed < -3.0:
+		_add(advice, 60.0, "Encore de la marge",
+				"Lancé %.1f s avant la limite. Vise 1 à 2 s de marge : assez pour une erreur, pas plus." % absf(signed), TONE_INFO)
+	else:
+		_add(advice, 50.0, "Timing maîtrisé",
+				"Lancé à %.1f s de la limite sans explosion. Tu sais lire les bips : garde ce repère en match." % absf(signed), TONE_GOOD)
+	if bool(report.get("timer_has_pressure_reps", false)) and pressure - calm >= 2.0:
+		_add(advice, 82.0, "Tu perds le rythme sous pression",
+				"Écart de %.1f s au calme contre %.1f s en tirant. Écoute le changement de cadence des bips plutôt que de compter : il reste audible pendant que tu tires." % [calm, pressure], TONE_FIX)
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +454,7 @@ static func _bot_combat_rules(advice: Array[Dictionary], report: Dictionary) -> 
 				"Les bots touchent %.0f %% de leurs balles. Ne reste pas immobile à découvert après ton tir : un pas de côté ou un retour à couvert divise leur précision." % bot_accuracy, TONE_FIX)
 	if loud > 150.0 and deaths >= 2:
 		_add(advice, 72.0, "Ils t'entendent venir",
-				"%d m parcourus en courant. Les bots repèrent ta position au bruit dans un rayon de 18 m : marche (Maj) à l'approche d'un angle." % roundi(loud), TONE_FIX)
+				"%d m parcourus en courant. Les bots repèrent ta position au bruit dans un rayon de 18 m : marche à l'approche d'un angle." % roundi(loud), TONE_FIX)
 	if _number(report, "headshot_rate") < 25.0 and _count(report, "hits") >= 10:
 		_add(advice, 70.0, "Vise la tête",
 				"%.0f %% de tirs à la tête. Un tir à la tête élimine un bot avant la fin de sa rafale ; trois balles dans le corps lui laissent le temps de répondre." % _number(report, "headshot_rate"), TONE_FIX)
@@ -546,22 +536,6 @@ static func _multi_target_rules(advice: Array[Dictionary], report: Dictionary) -
 		_add(advice, 34.0, "Transferts rapides", "%d ms en moyenne entre deux cibles : la difficulté monte." % roundi(transfer), TONE_GOOD)
 
 
-static func _sound_rules(advice: Array[Dictionary], report: Dictionary) -> void:
-	var error := _number(report, "sound_mean_error_deg")
-	if _count(report, "sound_reps") < 4:
-		_add(advice, 95.0, "Trop peu d'essais", "Termine les dix essais pour obtenir une mesure fiable.", TONE_FIX)
-		return
-	if _count(report, "sound_side_confusions") >= 2:
-		_add(advice, 92.0, "Gauche et droite inversées",
-				"%d réponses du mauvais côté. Vérifie que ton casque n'est pas à l'envers et que la sortie audio est bien en stéréo, sans effet de spatialisation supplémentaire." % _count(report, "sound_side_confusions"), TONE_FIX)
-	if _count(report, "sound_front_back_confusions") >= 2:
-		_add(advice, 80.0, "Avant et arrière confondus",
-				"%d confusions avant / arrière. C'est la limite du son stéréo : tourne légèrement la tête (le viseur) pendant le signal, le son se déplace alors d'un côté et lève le doute." % _count(report, "sound_front_back_confusions"), TONE_FIX)
-	if error > 25.0:
-		_add(advice, 70.0, "Localisation imprécise",
-				"%d° d'erreur moyenne. Balaye lentement jusqu'à ce que le son soit centré entre les deux oreilles, puis clique." % roundi(error), TONE_FIX)
-	else:
-		_add(advice, 34.0, "Bonne oreille", "%d° d'erreur moyenne : assez précis pour pré-viser un angle au son." % roundi(error), TONE_GOOD)
 
 
 # ---------------------------------------------------------------------------

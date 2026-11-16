@@ -17,10 +17,10 @@ enum Phase { FLICK, TRACKING, REACTION, SPRAY }
 
 const PHASE_NAMES := ["FLICK", "TRACKING", "RÉACTION", "SPRAY"]
 const PHASE_HINTS := [
-	"Détruis chaque sphère le plus vite possible.",
-	"Garde le viseur sur la sphère : pas besoin de tirer.",
-	"Tire dès que la sphère apparaît. Ne tire pas avant.",
-	"Maintiens le clic : rafales de 8 à 10 balles sur la sphère, en tirant le viseur vers le bas.",
+	"détruis les sphères",
+	"garde le viseur sur la sphère, sans tirer",
+	"tire dès que la sphère apparaît",
+	"rafales de 8 à 10 balles, viseur tiré vers le bas",
 ]
 const PHASE_SECONDS := 27.0
 const INTRO_SECONDS := 3.0
@@ -185,7 +185,7 @@ func _show_intro() -> void:
 	player.automatic = false
 	player.recoil_enabled = false
 	hud.set_side_stat("ÉPREUVE", "%d / 4 · %s" % [_phase + 1, PHASE_NAMES[_phase]])
-	hud.set_objective("%s — %s" % [PHASE_NAMES[_phase], PHASE_HINTS[_phase]])
+	hud.set_objective("%s · %s" % [PHASE_NAMES[_phase], PHASE_HINTS[_phase]])
 	hud.show_countdown(str(PHASE_NAMES[_phase]), INTRO_SECONDS - 0.6)
 	Sfx.play(&"tick")
 

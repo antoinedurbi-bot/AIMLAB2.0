@@ -1,14 +1,6 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://ui/main_menu.gd" id="1_menu"]
-[ext_resource type="Script" path="res://ui/crosshair.gd" id="2_crosshair"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_preview"]
-bg_color = Color(0.16, 0.19, 0.24, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -26,7 +18,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.01, 0.02, 0.04, 0.72)
+color = Color(0.01, 0.02, 0.04, 0.88)
 
 [node name="Margin" type="MarginContainer" parent="."]
 layout_mode = 1
@@ -35,154 +27,21 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/margin_left = 72
-theme_override_constants/margin_top = 40
-theme_override_constants/margin_right = 72
-theme_override_constants/margin_bottom = 40
+theme_override_constants/margin_left = 64
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 64
+theme_override_constants/margin_bottom = 36
 
-[node name="Columns" type="HBoxContainer" parent="Margin"]
+[node name="Root" type="VBoxContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 56
+theme_override_constants/separation = 24
 
-[node name="Left" type="VBoxContainer" parent="Margin/Columns"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 12
-alignment = 1
-
-[node name="Title" type="Label" parent="Margin/Columns/Left"]
-layout_mode = 2
-theme_type_variation = &"TitleLabel"
-text = "KINETIC // AIM"
-
-[node name="Tagline" type="Label" parent="Margin/Columns/Left"]
-layout_mode = 2
-theme_type_variation = &"HeadingLabel"
-text = "ENTRAÎNEMENT FPS TACTIQUE · TÉLÉMÉTRIE 1000 HZ · COACH"
-
-[node name="Gap" type="Control" parent="Margin/Columns/Left"]
-custom_minimum_size = Vector2(0, 10)
-layout_mode = 2
-
-[node name="DrillCaption" type="Label" parent="Margin/Columns/Left"]
-layout_mode = 2
-theme_type_variation = &"SectionLabel"
-text = "EXERCICES"
-
-[node name="DrillGrid" type="GridContainer" parent="Margin/Columns/Left"]
+[node name="TopBar" type="HBoxContainer" parent="Margin/Root"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/h_separation = 10
-theme_override_constants/v_separation = 6
-columns = 4
+theme_override_constants/separation = 10
 
-[node name="ModePanel" type="PanelContainer" parent="Margin/Columns/Left"]
-layout_mode = 2
-
-[node name="ModeBox" type="VBoxContainer" parent="Margin/Columns/Left/ModePanel"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="ModeName" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
+[node name="Pages" type="MarginContainer" parent="Margin/Root"]
 unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"ValueLabel"
-text = "EXERCICE"
-
-[node name="ModeFocus" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0, 0.9, 1, 1)
-text = "Compétence travaillée"
-
-[node name="ModeDescription" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(420, 72)
-layout_mode = 2
-text = "Description"
-autowrap_mode = 3
-
-[node name="MapRow" type="HBoxContainer" parent="Margin/Columns/Left/ModePanel/ModeBox"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="MapCaption" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox/MapRow"]
-layout_mode = 2
-text = "Carte"
-
-[node name="MapOption" type="OptionButton" parent="Margin/Columns/Left/ModePanel/ModeBox/MapRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(260, 0)
-layout_mode = 2
-
-[node name="ModeStats" type="Label" parent="Margin/Columns/Left/ModePanel/ModeBox"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"CaptionLabel"
-text = "Aucune session enregistrée"
-
-[node name="PlayButton" type="Button" parent="Margin/Columns/Left/ModePanel/ModeBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 0
-theme_type_variation = &"AccentButton"
-text = "LANCER LA SESSION"
-
-[node name="Controls" type="Label" parent="Margin/Columns/Left"]
-custom_minimum_size = Vector2(420, 0)
-layout_mode = 2
-theme_type_variation = &"HintLabel"
-text = "ZQSD (WASD en QWERTY) : se déplacer · Maj : marcher · Ctrl : s'accroupir · Espace : sauter / valider · Clic gauche : tirer · 1 2 3 + clic droit : utilitaires · Échap : menu · F11 : plein écran"
-autowrap_mode = 3
-
-[node name="QuitButton" type="Button" parent="Margin/Columns/Left"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 0
-text = "QUITTER"
-
-[node name="Right" type="PanelContainer" parent="Margin/Columns"]
-custom_minimum_size = Vector2(620, 0)
-layout_mode = 2
-
-[node name="RightBox" type="VBoxContainer" parent="Margin/Columns/Right"]
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="SettingsTitle" type="Label" parent="Margin/Columns/Right/RightBox"]
-layout_mode = 2
-theme_type_variation = &"HeadingLabel"
-text = "RÉGLAGES"
-
-[node name="Scroll" type="ScrollContainer" parent="Margin/Columns/Right/RightBox"]
 layout_mode = 2
 size_flags_vertical = 3
-horizontal_scroll_mode = 0
-
-[node name="SettingsList" type="VBoxContainer" parent="Margin/Columns/Right/RightBox/Scroll"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="PreviewCaption" type="Label" parent="Margin/Columns/Right/RightBox"]
-layout_mode = 2
-theme_type_variation = &"CaptionLabel"
-text = "APERÇU DU RÉTICULE"
-
-[node name="PreviewPanel" type="Panel" parent="Margin/Columns/Right/RightBox"]
-custom_minimum_size = Vector2(0, 110)
-layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_preview")
-
-[node name="CrosshairPreview" type="Control" parent="Margin/Columns/Right/RightBox/PreviewPanel"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-script = ExtResource("2_crosshair")

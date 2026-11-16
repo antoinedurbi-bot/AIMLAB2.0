@@ -75,22 +75,22 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"ui_cancel"):
-		if state == State.PLAYING and _drill_id == "free_roam":
+		if state == State.PLAYING and _drill != null and _drill.ends_on_cancel():
 			_finish_session()
 			get_viewport().set_input_as_handled()
 		elif state != State.MENU:
 			_show_menu()
 			get_viewport().set_input_as_handled()
-	elif event is InputEventKey:
-		var key := event as InputEventKey
-		if not key.pressed or key.echo:
-			return
-		if key.keycode == KEY_F11:
-			GameSettings.fullscreen = not GameSettings.fullscreen
-			GameSettings.commit_graphics()
-			get_viewport().set_input_as_handled()
-		elif key.physical_keycode == KEY_SPACE and state == State.PLAYING and _drill != null:
-			# ESPACE valide une action d'exercice ; le saut est géré par le joueur.
+		return
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_F11:
+		GameSettings.fullscreen = not GameSettings.fullscreen
+		GameSettings.commit_graphics()
+		get_viewport().set_input_as_handled()
+		return
+	# Touche « utiliser » : action propre à l'exercice (désamorcer, valider).
+	if state == State.PLAYING and _drill != null and event.is_pressed() and not event.is_echo():
+		if GameSettings.action_for(GameSettings.event_code(event)) == "use":
 			_drill.on_action()
 
 

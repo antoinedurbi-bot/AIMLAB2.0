@@ -42,7 +42,7 @@ func setup() -> void:
 		var suffix := candidate_suffixes[rng.randi_range(0, candidate_suffixes.size() - 1)]
 		var target := spawn_target(marker("T%d%s" % [index + 1, suffix]), target_radius)
 		_targets.append(target)
-	hud.set_objective("Nettoie chaque angle : viseur à hauteur de tête, collé au coin avant de sortir.")
+	hud.set_objective("Viseur à hauteur de tête avant chaque angle")
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("ANGLES", "0 / %d" % angle_count)
 

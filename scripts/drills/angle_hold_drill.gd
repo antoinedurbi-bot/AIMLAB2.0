@@ -53,7 +53,7 @@ func spawn_marker() -> String:
 func setup() -> void:
 	_west = marker("HoldWest")
 	_east = marker("HoldEast")
-	hud.set_objective("Tiens le passage : abats la cible dès qu'elle apparaît. Ne tire pas dans le vide.")
+	hud.set_objective("Un tir dès que la cible apparaît")
 
 
 func begin() -> void:

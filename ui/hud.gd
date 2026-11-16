@@ -9,10 +9,12 @@ const SpeedGauge := preload("res://ui/speed_gauge.gd")
 const COLOR_GOOD := Color(0.25, 1.0, 0.7)
 const COLOR_BAD := Color(1.0, 0.32, 0.42)
 const COLOR_INFO := Color(0.55, 0.9, 1.0)
+const OBJECTIVE_HOLD_SECONDS := 6.0
 
 var _countdown_tween: Tween
 var _feedback_tween: Tween
 var _flash_tween: Tween
+var _objective_tween: Tween
 var _fps_timer: float = 0.0
 var _last_time_text: String = ""
 ## Vrai quand un exercice a remplacé l'affichage de la précision par sa propre statistique.
@@ -95,8 +97,16 @@ func set_clock_text(text: String) -> void:
 
 
 ## Consigne permanente affichée sous la barre du haut.
+## Elle s'estompe après quelques secondes pour dégager l'écran.
 func set_objective(text: String) -> void:
 	_objective.text = text
+	if _objective_tween != null and _objective_tween.is_valid():
+		_objective_tween.kill()
+	_objective.modulate.a = 1.0
+	if text != "":
+		_objective_tween = create_tween()
+		_objective_tween.tween_interval(OBJECTIVE_HOLD_SECONDS)
+		_objective_tween.tween_property(_objective, "modulate:a", 0.35, 0.8)
 
 
 ## Message bref sous le réticule (résultat d'un tir, d'une sortie, d'une manche).
@@ -158,4 +168,4 @@ func flash_miss() -> void:
 
 
 func _refresh_sensitivity() -> void:
-	_sens_label.text = "%.1f cm/360° · %d DPI" % [GameSettings.cm_per_360, roundi(GameSettings.dpi)]
+	_sens_label.text = "%.1f cm/360°" % GameSettings.cm_per_360

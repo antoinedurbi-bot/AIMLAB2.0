@@ -1,22 +1,25 @@
 extends RefCounted
-## Catalogue des exercices : ce que le menu affiche et ce que le gestionnaire de
+## Catalogue des exercices : ce que le lobby affiche et ce que le gestionnaire de
 ## partie instancie. Pour ajouter un exercice : écrire un script qui étend
 ## drill_base.gd, puis l'inscrire ici.
 ##
 ## Champs d'une entrée :
-##   id, title, tag, description : affichage ;
-##   focus    : la compétence travaillée, en une ligne ;
-##   map      : scène de la carte à charger ;
-##   script   : script de l'exercice ;
-##   duration : durée maximale de la session (s) ;
-##   params   : variables de l'exercice à surcharger (nom -> valeur).
+##   id       : identifiant (historique, difficulté, conseils) ;
+##   category : onglet du lobby ("" = hors grille, lancé depuis l'accueil) ;
+##   card     : titre de la carte du lobby ; les entrées qui partagent une carte
+##              en sont les variantes, nommées par `variant` ;
+##   title    : nom affiché en jeu et dans le rapport ;
+##   focus    : la compétence travaillée, en quelques mots ;
+##   description : deux phrases au plus, affichées sur demande ;
+##   map / maps  : carte fixe, ou liste de cartes au choix ;
+##   script, duration, params : exercice, durée maximale (s), variables surchargées.
 
 const MAP_RANGE := "res://scenes/arena.tscn"
 const MAP_STRAFE_LANE := "res://scenes/maps/strafe_lane.tscn"
 const MAP_ANGLE_HALL := "res://scenes/maps/angle_hall.tscn"
 const MAP_KILL_HOUSE := "res://scenes/maps/kill_house.tscn"
 
-## Grandes cartes originales (deux ou trois sites), au choix dans le menu.
+## Grandes cartes originales (deux ou trois sites), au choix dans le lobby.
 const TACTICAL_MAPS := [
 	{"name": "Citadelle", "path": "res://scenes/maps/tactical_citadelle.tscn"},
 	{"name": "Triade (3 sites)", "path": "res://scenes/maps/tactical_triade.tscn"},
@@ -27,103 +30,130 @@ const TACTICAL_MAPS := [
 	{"name": "Dédale", "path": "res://scenes/maps/tactical_dedale.tscn"},
 ]
 
+## Onglets du lobby, dans l'ordre.
+const CATEGORIES := [
+	{"id": "aim", "title": "VISÉE"},
+	{"id": "move", "title": "DÉPLACEMENT"},
+	{"id": "duel", "title": "DUELS"},
+	{"id": "bomb", "title": "CHARGE ET SITES"},
+]
+
 const DRILLS := [
 	{
-		"id": "benchmark",
+		"id": "benchmark", "category": "", "card": "DIAGNOSTIC", "variant": "",
 		"title": "DIAGNOSTIC",
-		"tag": "2 min",
-		"focus": "Évaluer flick, tracking, réaction et contrôle du spray",
-		"description": "Quatre mini-épreuves de 27 secondes notées sur 100. La note la plus basse désigne ta priorité, et la routine du jour s'y adapte. À refaire chaque semaine pour mesurer tes progrès.",
+		"focus": "Flick, tracking, réaction, spray",
+		"description": "Quatre épreuves de 27 s notées sur 100. La note la plus basse fixe ta routine.",
 		"map": MAP_RANGE,
 		"script": preload("res://scripts/drills/benchmark_drill.gd"),
 		"duration": 122.0,
 		"params": {},
 	},
 	{
-		"id": "duel",
-		"title": "DUEL",
-		"tag": "Combat",
-		"focus": "Éliminer une cible humanoïde qui strafe",
-		"description": "Une silhouette strafe de façon erratique et marque de brefs arrêts. Élimine-la avant la fin du temps imparti : tête en un tir, corps en trois. Tir automatique avec recul, imprécision en mouvement. La difficulté s'ajuste à tes résultats.",
-		"map": MAP_STRAFE_LANE,
-		"script": preload("res://scripts/drills/duel_drill.gd"),
+		"id": "gridshot", "category": "aim", "card": "FLICKS", "variant": "Larges",
+		"title": "GRIDSHOT",
+		"focus": "Vitesse d'enchaînement",
+		"description": "Trois sphères sur une grille : détruis-en une, une autre apparaît.",
+		"map": MAP_RANGE,
+		"script": preload("res://scripts/drills/gridshot_drill.gd"),
 		"duration": 60.0,
 		"params": {},
 	},
 	{
-		"id": "tap_burst",
-		"title": "TAP ET RAFALES",
-		"tag": "Combat",
-		"focus": "Tirs isolés et rafales courtes à longue distance",
-		"description": "La cible est plus loin et strafe moins vite. À cette distance une longue rafale part hors de la cible : tire une à trois balles, replace le viseur, recommence. La longueur moyenne de tes rafales est mesurée.",
-		"map": MAP_STRAFE_LANE,
-		"script": preload("res://scripts/drills/duel_drill.gd"),
+		"id": "microflick", "category": "aim", "card": "FLICKS", "variant": "Micro",
+		"title": "MICROFLICKS",
+		"focus": "Précision à hauteur de tête",
+		"description": "Une petite cible à la fois, toujours proche de la précédente.",
+		"map": MAP_RANGE,
+		"script": preload("res://scripts/drills/gridshot_drill.gd"),
 		"duration": 60.0,
-		"params": {"enemy_depth": -4.5, "strafe_scale": 0.6, "base_time_limit": 3.6},
+		"params": {"grid_columns": 7, "grid_rows": 3, "cell_spacing": 0.5, "grid_distance": 13.0, "target_radius": 0.16, "simultaneous_targets": 1, "miss_penalty": 25},
 	},
 	{
-		"id": "peek_duel",
-		"title": "DUEL D'ANGLE",
-		"tag": "Combat",
-		"focus": "Sortir d'un coin et gagner contre un adversaire qui riposte",
-		"description": "Un adversaire tient l'angle derrière le coin et tire quelques dixièmes de seconde après t'avoir vu. Sors serré ou large, élimine-le avant, ou reviens à couvert et ressors. Exposition, largeur de sortie et re-sorties sont mesurées.",
-		"map": MAP_ANGLE_HALL,
-		"script": preload("res://scripts/drills/peek_duel_drill.gd"),
-		"duration": 75.0,
-		"params": {},
-	},
-	{
-		"id": "multi_target",
+		"id": "multi_target", "category": "aim", "card": "TRANSFERTS", "variant": "",
 		"title": "CIBLES MULTIPLES",
-		"tag": "Combat",
-		"focus": "Transfert de rafale et ordre des cibles",
-		"description": "Des vagues de trois silhouettes. Élimine-les en enchaînant, sans relâcher le clic si tu le peux, et choisis l'ordre qui raccourcit tes trajets de viseur. Temps par vague et temps de transfert sont mesurés.",
+		"focus": "Passer d'une cible à l'autre",
+		"description": "Vagues de trois silhouettes à éliminer d'une traite. Choisis l'ordre le plus court.",
 		"map": MAP_STRAFE_LANE,
 		"script": preload("res://scripts/drills/multi_target_drill.gd"),
 		"duration": 60.0,
 		"params": {},
 	},
 	{
-		"id": "sound_locate",
-		"title": "LOCALISATION AU SON",
-		"tag": "Sens du jeu",
-		"focus": "Situer une source sonore à l'oreille",
-		"description": "Un signal est émis quelque part autour de toi. Tourne-toi vers sa source et clique ; elle est ensuite révélée. Dix essais. Casque stéréo indispensable.",
-		"map": MAP_RANGE,
-		"script": preload("res://scripts/drills/sound_locate_drill.gd"),
-		"duration": 150.0,
+		"id": "angle_hold", "category": "aim", "card": "TENUE D'ANGLE", "variant": "",
+		"title": "TENUE D'ANGLE",
+		"focus": "Réaction et premier tir",
+		"description": "Une cible surgit du coin à un moment imprévisible. Un tir, pas de tir dans le vide.",
+		"map": MAP_ANGLE_HALL,
+		"script": preload("res://scripts/drills/angle_hold_drill.gd"),
+		"duration": 60.0,
 		"params": {},
 	},
 	{
-		"id": "defuse",
-		"title": "DÉSAMORÇAGE",
-		"tag": "Carte",
-		"focus": "Reprendre un site et désamorcer avant l'explosion",
-		"description": "La charge explose dans 45 secondes. Pars du spawn défenseur, nettoie le site, puis appuie sur ESPACE au centre du site et reste immobile 7 secondes. Bouger ou s'éloigner interrompt le désamorçage.",
-		"map": MAP_RANGE,
-		"maps": TACTICAL_MAPS,
-		"script": preload("res://scripts/drills/site_clear_drill.gd"),
-		"duration": 45.0,
-		"params": {"angle_count": 5, "retake": true, "charge_seconds": 45.0},
-	},
-	{
-		"id": "bomb_defense",
-		"title": "DÉFENSE DE LA CHARGE",
-		"tag": "Carte",
-		"focus": "Tenir un site après la pose jusqu'à l'explosion",
-		"description": "La charge est posée sur un site. Des bots partent du spawn défenseur, trouvent leur chemin jusqu'à elle, ripostent s'ils te voient et la désamorcent en 7 secondes s'ils l'atteignent. Tiens 45 secondes : si la charge explose, tu gagnes.",
-		"map": MAP_RANGE,
-		"maps": TACTICAL_MAPS,
-		"script": preload("res://scripts/drills/bomb_defense_drill.gd"),
-		"duration": 46.0,
+		"id": "counter_strafe", "category": "move", "card": "ARRÊT ET TIR", "variant": "",
+		"title": "STRAFE / CONTRE-STRAFE",
+		"focus": "S'arrêter net avant de tirer",
+		"description": "Strafe à pleine vitesse, arrête-toi, tire. Chaque tir en mouvement est dévié.",
+		"map": MAP_STRAFE_LANE,
+		"script": preload("res://scripts/drills/counter_strafe_drill.gd"),
+		"duration": 60.0,
 		"params": {},
 	},
 	{
-		"id": "skirmish",
+		"id": "jiggle_peek", "category": "move", "card": "JIGGLE PEEK", "variant": "",
+		"title": "JIGGLE PEEK",
+		"focus": "Prendre l'info sans être touché",
+		"description": "Sors du coin juste assez pour voir, puis reviens. Aucun tir.",
+		"map": MAP_ANGLE_HALL,
+		"script": preload("res://scripts/drills/jiggle_peek_drill.gd"),
+		"duration": 60.0,
+		"params": {},
+	},
+	{
+		"id": "pre_aim", "category": "move", "card": "PARCOURS", "variant": "",
+		"title": "PRÉ-VISÉE",
+		"focus": "Viseur placé avant chaque angle",
+		"description": "Traverse le parcours et abats la cible cachée derrière chaque angle.",
+		"map": MAP_KILL_HOUSE,
+		"script": preload("res://scripts/drills/pre_aim_drill.gd"),
+		"duration": 90.0,
+		"params": {},
+	},
+	{
+		"id": "duel", "category": "duel", "card": "DUEL", "variant": "Proche",
+		"title": "DUEL",
+		"focus": "Cible qui strafe, recul actif",
+		"description": "Une silhouette strafe de façon erratique. Tête : un tir. Corps : trois.",
+		"map": MAP_STRAFE_LANE,
+		"script": preload("res://scripts/drills/duel_drill.gd"),
+		"duration": 60.0,
+		"params": {},
+	},
+	{
+		"id": "tap_burst", "category": "duel", "card": "DUEL", "variant": "Longue distance",
+		"title": "TAP ET RAFALES",
+		"focus": "Une à trois balles, pas plus",
+		"description": "Cible lointaine : les longues rafales partent hors cible.",
+		"map": MAP_STRAFE_LANE,
+		"script": preload("res://scripts/drills/duel_drill.gd"),
+		"duration": 60.0,
+		"params": {"enemy_depth": -4.5, "strafe_scale": 0.6, "base_time_limit": 3.6},
+	},
+	{
+		"id": "peek_duel", "category": "duel", "card": "DUEL D'ANGLE", "variant": "",
+		"title": "DUEL D'ANGLE",
+		"focus": "Sortir d'un coin face à un tireur",
+		"description": "L'adversaire tient l'angle et riposte. Sors, tue, ou reviens à couvert.",
+		"map": MAP_ANGLE_HALL,
+		"script": preload("res://scripts/drills/peek_duel_drill.gd"),
+		"duration": 75.0,
+		"params": {},
+	},
+	{
+		"id": "skirmish", "category": "duel", "card": "ESCARMOUCHE", "variant": "",
 		"title": "ESCARMOUCHE",
-		"tag": "Carte",
-		"focus": "Combattre des bots qui te cherchent, t'entendent et ripostent",
-		"description": "Deux bots patrouillent la carte, viennent vers toi quand ils te voient ou t'entendent courir, et tirent par rafales après leur temps de réaction. Tu as 100 points de vie. Leur niveau s'adapte à tes résultats.",
+		"focus": "Trois bots coordonnés te traquent",
+		"description": "Ils te voient, t'entendent courir et se couvrent. Tu as 100 PV.",
 		"map": MAP_RANGE,
 		"maps": TACTICAL_MAPS,
 		"script": preload("res://scripts/drills/skirmish_drill.gd"),
@@ -131,108 +161,10 @@ const DRILLS := [
 		"params": {},
 	},
 	{
-		"id": "lineups",
-		"title": "LINEUPS",
-		"tag": "Carte",
-		"focus": "Trouver et mémoriser des lancers d'utilitaires",
-		"description": "Une zone cible est marquée sur un site. Fais-y atterrir un incendiaire (2 puis clic droit) depuis l'endroit de ton choix : chaque lancer réussi est enregistré avec ta position et ta visée, et rappelé ensuite. Le fumigène se pose depuis la mini-carte (1). Utilitaires illimités.",
-		"map": MAP_RANGE,
-		"maps": TACTICAL_MAPS,
-		"script": preload("res://scripts/drills/lineup_drill.gd"),
-		"duration": 240.0,
-		"params": {},
-	},
-	{
-		"id": "gridshot",
-		"title": "GRIDSHOT",
-		"tag": "Visée",
-		"focus": "Flicks larges, vitesse d'enchaînement",
-		"description": "Trois sphères sur une grille face à toi. Détruis-en une : une autre surgit aussitôt ailleurs. Enchaîne les flicks le plus vite et le plus proprement possible.",
-		"map": MAP_RANGE,
-		"script": preload("res://scripts/drills/gridshot_drill.gd"),
-		"duration": 60.0,
-		"params": {},
-	},
-	{
-		"id": "microflick",
-		"title": "MICROFLICKS",
-		"tag": "Visée",
-		"focus": "Petits ajustements sur cibles de la taille d'une tête",
-		"description": "Une seule petite cible à la fois, toujours proche de la précédente et à hauteur de tête. Travaille la précision des micro-corrections, celles qui font les tirs à la tête.",
-		"map": MAP_RANGE,
-		"script": preload("res://scripts/drills/gridshot_drill.gd"),
-		"duration": 60.0,
-		"params": {
-			"grid_columns": 7,
-			"grid_rows": 3,
-			"cell_spacing": 0.5,
-			"grid_distance": 13.0,
-			"target_radius": 0.16,
-			"simultaneous_targets": 1,
-			"miss_penalty": 25,
-		},
-	},
-	{
-		"id": "angle_hold",
-		"title": "TENUE D'ANGLE",
-		"tag": "Réaction",
-		"focus": "Temps de réaction, premier tir, placement du viseur",
-		"description": "Tu surveilles un passage. Une cible surgit d'un côté à un moment imprévisible : elle s'arrête un instant ou traverse en courant. Abats-la au premier tir, sans jamais tirer dans le vide.",
-		"map": MAP_ANGLE_HALL,
-		"script": preload("res://scripts/drills/angle_hold_drill.gd"),
-		"duration": 60.0,
-		"params": {},
-	},
-	{
-		"id": "counter_strafe",
-		"title": "STRAFE / CONTRE-STRAFE",
-		"tag": "Déplacement",
-		"focus": "S'arrêter net avant de tirer",
-		"description": "Déplace-toi latéralement à pleine vitesse, arrête-toi d'un appui sur la touche opposée, puis tire. Un tir déclenché en mouvement est dévié : chaque tir est mesuré (vitesse, temps d'arrêt, méthode).",
-		"map": MAP_STRAFE_LANE,
-		"script": preload("res://scripts/drills/counter_strafe_drill.gd"),
-		"duration": 60.0,
-		"params": {},
-	},
-	{
-		"id": "jiggle_peek",
-		"title": "JIGGLE PEEK",
-		"tag": "Déplacement",
-		"focus": "Prendre une information sans se faire toucher",
-		"description": "À couvert derrière un coin, sors juste assez pour apercevoir l'adversaire puis reviens aussitôt. Reste exposé trop longtemps et il te touche. Aucun tir : seule compte la brièveté de la sortie.",
-		"map": MAP_ANGLE_HALL,
-		"script": preload("res://scripts/drills/jiggle_peek_drill.gd"),
-		"duration": 60.0,
-		"params": {},
-	},
-	{
-		"id": "pre_aim",
-		"title": "PRÉ-VISÉE",
-		"tag": "Placement",
-		"focus": "Placement du viseur en nettoyant des angles",
-		"description": "Traverse le parcours et abats la cible cachée derrière chaque angle. Les positions changent à chaque session. On mesure l'écart entre ton viseur et la tête à l'instant où la cible devient visible.",
-		"map": MAP_KILL_HOUSE,
-		"script": preload("res://scripts/drills/pre_aim_drill.gd"),
-		"duration": 90.0,
-		"params": {},
-	},
-	{
-		"id": "charge_timer",
-		"title": "CHRONO DE LA CHARGE",
-		"tag": "Sens du jeu",
-		"focus": "Compter de tête le temps écoulé depuis la pose",
-		"description": "Au bip, la charge est posée. Appuie sur ESPACE à l'instant demandé, sans chronomètre : 10 s, 20 s, puis 20 s et 38 s en abattant des cibles. 38 s est le dernier instant pour lancer un désamorçage de 7 s sur une charge de 45 s.",
-		"map": MAP_RANGE,
-		"script": preload("res://scripts/drills/charge_timer_drill.gd"),
-		"duration": 200.0,
-		"params": {},
-	},
-	{
-		"id": "site_attack",
+		"id": "site_attack", "category": "bomb", "card": "SITE", "variant": "Attaque",
 		"title": "ATTAQUE DE SITE",
-		"tag": "Carte",
-		"focus": "Entrer sur un site et nettoyer chaque angle",
-		"description": "Sur une grande carte au choix, un site est tiré au sort. Tu pars du lobby, tu entres et tu abats les huit cibles cachées derrière les caisses et les coins. Les positions changent à chaque session.",
+		"focus": "Entrer et nettoyer chaque angle",
+		"description": "Pars du lobby et abats les huit cibles cachées sur le site.",
 		"map": MAP_RANGE,
 		"maps": TACTICAL_MAPS,
 		"script": preload("res://scripts/drills/site_clear_drill.gd"),
@@ -240,11 +172,10 @@ const DRILLS := [
 		"params": {"angle_count": 8},
 	},
 	{
-		"id": "site_retake",
+		"id": "site_retake", "category": "bomb", "card": "SITE", "variant": "Reprise",
 		"title": "REPRISE DE SITE",
-		"tag": "Carte",
-		"focus": "Revenir du spawn défenseur et reprendre un site",
-		"description": "Même principe côté défense : tu pars du spawn des défenseurs, tu rejoins le site tiré au sort et tu le reprends angle par angle. Le chronomètre récompense une reprise rapide et propre.",
+		"focus": "Revenir et reprendre le site",
+		"description": "Pars du spawn défenseur et reprends le site angle par angle.",
 		"map": MAP_RANGE,
 		"maps": TACTICAL_MAPS,
 		"script": preload("res://scripts/drills/site_clear_drill.gd"),
@@ -252,11 +183,53 @@ const DRILLS := [
 		"params": {"angle_count": 8, "retake": true},
 	},
 	{
-		"id": "free_roam",
+		"id": "defuse", "category": "bomb", "card": "SITE", "variant": "Désamorçage",
+		"title": "DÉSAMORÇAGE",
+		"focus": "Nettoyer puis désamorcer en 45 s",
+		"description": "Nettoie le site, puis désamorce au centre : 7 s sans bouger.",
+		"map": MAP_RANGE,
+		"maps": TACTICAL_MAPS,
+		"script": preload("res://scripts/drills/site_clear_drill.gd"),
+		"duration": 45.0,
+		"params": {"angle_count": 5, "retake": true, "charge_seconds": 45.0},
+	},
+	{
+		"id": "bomb_defense", "category": "bomb", "card": "DÉFENSE", "variant": "",
+		"title": "DÉFENSE DE LA CHARGE",
+		"focus": "Tenir le site après la pose",
+		"description": "Des bots viennent désamorcer. Tiens 45 s.",
+		"map": MAP_RANGE,
+		"maps": TACTICAL_MAPS,
+		"script": preload("res://scripts/drills/bomb_defense_drill.gd"),
+		"duration": 46.0,
+		"params": {},
+	},
+	{
+		"id": "charge_timer", "category": "bomb", "card": "DERNIÈRE SECONDE", "variant": "",
+		"title": "DERNIÈRE SECONDE",
+		"focus": "Lire le rythme des bips",
+		"description": "Une charge bipe devant toi, sans chrono. Lance le désamorçage le plus tard possible.",
+		"map": MAP_RANGE,
+		"script": preload("res://scripts/drills/charge_timer_drill.gd"),
+		"duration": 120.0,
+		"params": {},
+	},
+	{
+		"id": "lineups", "category": "bomb", "card": "UTILITAIRES", "variant": "Lineups",
+		"title": "LINEUPS",
+		"focus": "Trouver et mémoriser des lancers",
+		"description": "Fais atterrir l'incendiaire dans la zone marquée. Les lancers réussis sont mémorisés.",
+		"map": MAP_RANGE,
+		"maps": TACTICAL_MAPS,
+		"script": preload("res://scripts/drills/lineup_drill.gd"),
+		"duration": 240.0,
+		"params": {},
+	},
+	{
+		"id": "free_roam", "category": "bomb", "card": "UTILITAIRES", "variant": "Exploration",
 		"title": "EXPLORATION LIBRE",
-		"tag": "Carte",
-		"focus": "Apprendre une carte : trajets, angles, rotations",
-		"description": "Parcours librement une grande carte, sans cible ni score. Utile avant les exercices d'attaque et de reprise pour repérer les entrées de chaque site.",
+		"focus": "Apprendre une carte",
+		"description": "Parcours la carte librement. Échap pour terminer.",
 		"map": MAP_RANGE,
 		"maps": TACTICAL_MAPS,
 		"script": preload("res://scripts/drills/free_roam_drill.gd"),
@@ -274,3 +247,22 @@ static func find(drill_id: String) -> Dictionary:
 			return entry
 	var first: Dictionary = DRILLS[0]
 	return first
+
+
+## Entrées d'une catégorie regroupées par carte : [{card, entries: [entrée, ...]}].
+static func cards(category: String) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for item: Variant in DRILLS:
+		var entry: Dictionary = item
+		if entry.get("category", "") != category:
+			continue
+		var card_title: String = entry.get("card", "")
+		var found := false
+		for card in result:
+			if card.get("card", "") == card_title:
+				var entries: Array = card["entries"]
+				entries.append(entry)
+				found = true
+		if not found:
+			result.append({"card": card_title, "entries": [entry]})
+	return result

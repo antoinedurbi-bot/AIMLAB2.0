@@ -1,18 +1,22 @@
 extends CharacterBody3D
-## Contrôleur FPS : visée 1:1 sur les counts bruts de la souris, déplacement au
-## sol de type FPS tactique (accélération vive, friction forte) et tir hitscan.
+## Contrôleur FPS : visée 1:1 sur les counts bruts de la souris, déplacement de
+## FPS tactique et tir hitscan. Les touches viennent de GameSettings.keys.
 ##
-## Visée — aucune interpolation, aucun lissage : chaque count est converti en
-## degrés via la sensibilité cm/360° de GameSettings.
+## Déplacement — la vitesse au sol rejoint la vitesse voulue à taux constant :
+##   * départ : pleine vitesse en ~160 ms ;
+##   * touche relâchée : tir précis après ~85 ms, arrêt complet en ~120 ms ;
+##   * contre-strafe (touche opposée) : tir précis après ~50 ms.
+## L'arrêt est donc franc même sans contre-strafe, qui reste un peu plus rapide.
+## Pas de gain de vitesse en l'air : le saut conserve l'élan, avec très peu de
+## contrôle. L'atterrissage et une balle reçue ralentissent brièvement.
+## La vitesse de course dépend de l'arme ; marcher et s'accroupir sont silencieux.
 ##
-## Déplacement — modèle friction + accélération vers la direction voulue. Deux
-## façons de s'arrêter coexistent et sont mesurables :
-##   * relâcher la touche : la friction seule amène sous ACCURATE_SPEED en ~120 ms ;
-##   * contre-strafe (appui bref sur la touche opposée) : ~40 ms.
-## Les valeurs sont une approximation d'un FPS tactique, pas une copie d'un jeu.
+## Précision — immobile, la première balle a une faible dispersion propre à
+## l'arme (réduite accroupi). Au-dessus de ACCURATE_SPEED le tir est dévié, de
+## plus en plus avec la vitesse ; en l'air il part n'importe où.
 ##
-## Imprécision — quand `movement_inaccuracy` est actif, un tir déclenché au-dessus
-## de ACCURATE_SPEED est dévié aléatoirement, d'autant plus que la vitesse est grande.
+## Ces valeurs visent le ressenti d'un FPS tactique moderne ; ce sont des
+## estimations réglables ci-dessous, pas des mesures d'un jeu.
 
 ## Émis à chaque tir. `collider` est nul si le rayon n'a rien touché. `shot`
 ## décrit l'état du joueur au moment du tir (vitesse, déviation, touches...).
@@ -25,14 +29,24 @@ signal utility_throw_requested(origin: Vector3, direction: Vector3)
 
 const MAX_PITCH_DEG := 89.0
 
-## Vitesse de course et de marche (m/s).
+## Vitesse de course de référence (fusil) ; l'arme en main fixe la valeur réelle.
 const RUN_SPEED := 5.4
-const WALK_SPEED := 2.9
-const GROUND_ACCELERATION := 12.0
-const FRICTION := 10.0
-## Sous cette vitesse la friction devient constante : l'arrêt est franc.
-const STOP_SPEED := 2.2
-const GRAVITY := 22.0
+## Marche et accroupi : fraction de la vitesse de course.
+const WALK_RATIO := 0.54
+const CROUCH_RATIO := 0.45
+## Taux d'accélération et de freinage au sol (m/s²).
+const GROUND_ACCELERATION := 34.0
+const GROUND_DECELERATION := 45.0
+## Contrôle en l'air (m/s²) : volontairement faible.
+const AIR_ACCELERATION := 7.0
+const GRAVITY := 20.0
+## Après un saut : vitesse multipliée par LANDING_SLOW, rétablie en LANDING_RECOVERY s.
+const LANDING_SLOW := 0.55
+const LANDING_RECOVERY := 0.35
+const MIN_AIR_TIME := 0.15
+## Balle reçue : vitesse multipliée par TAG_SLOW, rétablie en TAG_RECOVERY s.
+const TAG_SLOW := 0.3
+const TAG_RECOVERY := 0.5
 
 ## Vitesse (m/s) sous laquelle le tir est parfaitement précis.
 const ACCURATE_SPEED := 1.5
@@ -40,6 +54,8 @@ const ACCURATE_SPEED := 1.5
 const FULL_SPEED_RATIO := 0.85
 const MIN_MOVING_SPREAD_DEG := 1.2
 const MAX_MOVING_SPREAD_DEG := 5.0
+const AIR_SPREAD_DEG := 8.0
+const CROUCH_SPREAD_FACTOR := 0.8
 
 const Weapons := preload("res://scripts/weapons.gd")
 
@@ -48,9 +64,8 @@ const SPRAY_RESET_SECONDS := 0.4
 ## Accroupi : hauteur des yeux, vitesse, et recul multiplié par ce facteur.
 const STAND_EYE_HEIGHT := 1.7
 const CROUCH_EYE_HEIGHT := 1.15
-const CROUCH_SPEED := 2.4
 const CROUCH_RECOIL_FACTOR := 0.8
-const JUMP_VELOCITY := 6.2
+const JUMP_VELOCITY := 5.6
 ## Au-dessus de cette vitesse les pas s'entendent ; distance entre deux pas (m).
 const LOUD_SPEED := 3.3
 const STEP_DISTANCE := 2.3
@@ -100,6 +115,9 @@ var _key_walk: bool = false
 var _trigger_held: bool = false
 var _key_crouch: bool = false
 var _step_distance: float = 0.0
+var _landing_slow: float = 1.0
+var _tag_slow: float = 1.0
+var _air_time: float = 0.0
 ## Profil de l'arme en main (voir scripts/weapons.gd).
 var weapon: Dictionary = {}
 ## Distance parcourue en faisant du bruit depuis le début de la session (m).
@@ -120,28 +138,24 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-		# Mini-carte ouverte : la touche 1 doit encore pouvoir la refermer.
-		var map_key := event as InputEventKey
-		if utility_enabled and map_key != null and map_key.pressed and not map_key.echo and map_key.physical_keycode == KEY_1:
-			utility_key_pressed.emit(0)
-		return
 	if event is InputEventMouseMotion:
-		if look_enabled:
+		if look_enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			_look(event as InputEventMouseMotion)
-	elif event is InputEventMouseButton:
-		var button := event as InputEventMouseButton
-		if button.button_index == MOUSE_BUTTON_RIGHT and button.pressed and utility_enabled:
-			utility_throw_requested.emit(camera.global_position, -camera.global_transform.basis.z)
-		if button.button_index == MOUSE_BUTTON_LEFT:
-			_trigger_held = button.pressed
-			if fire_enabled and button.pressed and Time.get_ticks_usec() >= _next_shot_usec:
-				_fire()
-				_next_shot_usec = Time.get_ticks_usec() + int(_fire_interval() * 1000000.0)
-	elif event is InputEventKey:
-		var key := event as InputEventKey
-		if not key.echo:
-			_handle_key(key.physical_keycode, key.pressed)
+		return
+	if event.is_echo():
+		return
+	var action: String = GameSettings.action_for(GameSettings.event_code(event))
+	if action == "":
+		return
+	var pressed := event.is_pressed()
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		# Mini-carte ouverte : sa touche la referme ; les relâchements restent pris en compte.
+		if action == "util1" and pressed and utility_enabled:
+			utility_key_pressed.emit(0)
+		elif not pressed and move_enabled:
+			_handle_action(action, false)
+		return
+	_handle_action(action, pressed)
 
 
 func _process(delta: float) -> void:
@@ -166,32 +180,48 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
-	var speed := horizontal.length()
+	var grounded := is_on_floor()
+	_landing_slow = move_toward(_landing_slow, 1.0, delta * (1.0 - LANDING_SLOW) / LANDING_RECOVERY)
+	_tag_slow = move_toward(_tag_slow, 1.0, delta * (1.0 - TAG_SLOW) / TAG_RECOVERY)
 
-	# Friction : proportionnelle à la vitesse, puis constante sous STOP_SPEED.
-	if speed > 0.0001:
-		var drop := maxf(speed, STOP_SPEED) * FRICTION * delta
-		horizontal *= maxf(speed - drop, 0.0) / speed
-
-	# Accélération vers la direction voulue, plafonnée à la vitesse cible.
+	# Vitesse voulue : direction des touches, plafond selon la posture et les ralentissements.
 	var strafe := float(_key_right) - float(_key_left)
 	var advance := float(_key_back) - float(_key_forward)
+	var wish := Vector3.ZERO
 	if strafe != 0.0 or advance != 0.0:
-		var wish_direction: Vector3 = (global_transform.basis * Vector3(strafe, 0.0, advance)).normalized()
-		var wish_speed := WALK_SPEED if _key_walk else RUN_SPEED
+		var top := run_speed()
 		if _key_crouch:
-			wish_speed = CROUCH_SPEED
-		var missing := wish_speed - horizontal.dot(wish_direction)
-		if missing > 0.0:
-			horizontal += wish_direction * minf(GROUND_ACCELERATION * wish_speed * delta, missing)
+			top *= CROUCH_RATIO
+		elif _key_walk:
+			top *= WALK_RATIO
+		top *= minf(_landing_slow, _tag_slow)
+		wish = (global_transform.basis * Vector3(strafe, 0.0, advance)).normalized() * top
+
+	if grounded:
+		var rate := GROUND_DECELERATION
+		if wish != Vector3.ZERO:
+			rate = GROUND_ACCELERATION
+			# Touche opposée à l'élan : le freinage s'ajoute à l'accélération (contre-strafe).
+			if horizontal.dot(wish) < 0.0:
+				rate += GROUND_DECELERATION
+		horizontal = horizontal.move_toward(wish, rate * delta)
+	elif wish != Vector3.ZERO:
+		# En l'air : on infléchit la trajectoire sans jamais gagner de vitesse.
+		var cap := maxf(horizontal.length(), wish.length() * 0.3)
+		horizontal = (horizontal + wish.normalized() * AIR_ACCELERATION * delta).limit_length(cap)
 
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
-	if is_on_floor():
+	if grounded:
 		velocity.y = maxf(velocity.y, 0.0)
 	else:
 		velocity.y -= GRAVITY * delta
+		_air_time += delta
 	move_and_slide()
+	if is_on_floor():
+		if _air_time >= MIN_AIR_TIME:
+			_landing_slow = LANDING_SLOW
+		_air_time = 0.0
 
 	var current_speed := horizontal_speed()
 	# Bruits de pas : courir s'entend, marcher ou s'accroupir non.
@@ -201,7 +231,7 @@ func _physics_process(delta: float) -> void:
 		if _step_distance >= STEP_DISTANCE:
 			_step_distance = 0.0
 			Sfx.play(&"step")
-	if current_speed >= RUN_SPEED * FULL_SPEED_RATIO:
+	if current_speed >= run_speed() * FULL_SPEED_RATIO:
 		last_full_speed_usec = Time.get_ticks_usec()
 		var lateral := lateral_velocity()
 		if absf(lateral) >= current_speed * 0.7:
@@ -249,11 +279,25 @@ func reset_input() -> void:
 	right_release_usec = 0
 	_trigger_held = false
 	_key_crouch = false
+	_landing_slow = 1.0
+	_tag_slow = 1.0
+	_air_time = 0.0
 	_spray_index = 0
 	automatic = false
 	recoil_enabled = false
 	utility_enabled = false
 	Telemetry.input_mask = 0
+
+
+## Vitesse de course avec l'arme en main (m/s).
+func run_speed() -> float:
+	var speed: float = weapon.get("speed", RUN_SPEED)
+	return speed
+
+
+## Ralentit brièvement le joueur : à appeler quand il reçoit une balle.
+func apply_tag() -> void:
+	_tag_slow = TAG_SLOW
 
 
 func horizontal_speed() -> float:
@@ -346,47 +390,49 @@ func _apply_rotation() -> void:
 
 
 # ---------------------------------------------------------------------------
-# Touches de déplacement (codes physiques : ZQSD sur AZERTY, WASD sur QWERTY)
+# Actions (touches et boutons définis dans GameSettings.keys)
 # ---------------------------------------------------------------------------
 
-func _handle_key(physical_keycode: Key, pressed: bool) -> void:
+func _handle_action(action: String, pressed: bool) -> void:
 	var now := Time.get_ticks_usec()
-	var label := ""
-	match physical_keycode:
-		KEY_W:
+	match action:
+		"forward":
 			_key_forward = pressed
-			label = "forward"
-		KEY_S:
+		"back":
 			_key_back = pressed
-			label = "back"
-		KEY_A:
+		"left":
 			_key_left = pressed
-			label = "left"
 			if pressed:
 				left_press_usec = now
 			else:
 				left_release_usec = now
-		KEY_D:
+		"right":
 			_key_right = pressed
-			label = "right"
 			if pressed:
 				right_press_usec = now
 			else:
 				right_release_usec = now
-		KEY_SHIFT:
+		"walk":
 			_key_walk = pressed
-			label = "walk"
-		KEY_1, KEY_2, KEY_3:
-			if pressed and utility_enabled:
-				utility_key_pressed.emit(int(physical_keycode) - int(KEY_1))
-			return
-		KEY_CTRL:
+		"crouch":
 			_key_crouch = pressed
-			label = "crouch"
-		KEY_SPACE:
+		"jump":
 			if pressed and move_enabled and is_on_floor():
 				velocity.y = JUMP_VELOCITY
-			label = "jump"
+		"fire":
+			_trigger_held = pressed
+			if fire_enabled and pressed and now >= _next_shot_usec:
+				_fire()
+				_next_shot_usec = now + int(_fire_interval() * 1000000.0)
+			return
+		"throw":
+			if pressed and utility_enabled:
+				utility_throw_requested.emit(camera.global_position, -camera.global_transform.basis.z)
+			return
+		"util1", "util2", "util3":
+			if pressed and utility_enabled:
+				utility_key_pressed.emit(action.to_int() - 1)
+			return
 		_:
 			return
 
@@ -404,7 +450,7 @@ func _handle_key(physical_keycode: Key, pressed: bool) -> void:
 	if _key_crouch:
 		mask |= KEY_BIT_CROUCH
 	Telemetry.input_mask = mask
-	Telemetry.log_event("key", {"key": label, "pressed": pressed, "speed": horizontal_speed()})
+	Telemetry.log_event("key", {"key": action, "pressed": pressed, "speed": horizontal_speed()})
 
 
 # ---------------------------------------------------------------------------
@@ -416,9 +462,8 @@ func _fire() -> void:
 	var deviation := Vector2.ZERO
 	var airborne := move_enabled and not is_on_floor()
 	if movement_inaccuracy and (speed > ACCURATE_SPEED or airborne):
-		# En l'air, le tir est aussi imprécis qu'à pleine vitesse.
-		var excess := 1.0 if airborne else clampf((speed - ACCURATE_SPEED) / (RUN_SPEED - ACCURATE_SPEED), 0.0, 1.0)
-		var spread := lerpf(MIN_MOVING_SPREAD_DEG, MAX_MOVING_SPREAD_DEG, excess)
+		var excess := clampf((speed - ACCURATE_SPEED) / (run_speed() - ACCURATE_SPEED), 0.0, 1.0)
+		var spread := AIR_SPREAD_DEG if airborne else lerpf(MIN_MOVING_SPREAD_DEG, MAX_MOVING_SPREAD_DEG, excess)
 		deviation = Vector2.from_angle(randf() * TAU) * (spread * sqrt(randf()))
 
 	# Rafale : l'index repart de zéro après une courte pause.
@@ -429,6 +474,11 @@ func _fire() -> void:
 	_spray_index += 1
 	_last_shot_usec = fire_usec
 	if recoil_enabled:
+		# Dispersion propre à l'arme, même immobile, puis recul de la rafale.
+		var base_spread: float = weapon.get("spread", 0.25)
+		if _key_crouch:
+			base_spread *= CROUCH_SPREAD_FACTOR
+		deviation += Vector2.from_angle(randf() * TAU) * (base_spread * sqrt(randf()))
 		deviation += recoil_offset(spray_index)
 
 	# Le rayon est dévié le temps du tir (x > 0 : vers la droite, y > 0 : vers le haut).
@@ -448,7 +498,7 @@ func _fire() -> void:
 	var shot := {
 		"time_usec": Time.get_ticks_usec(),
 		"speed": speed,
-		"accurate": speed <= ACCURATE_SPEED,
+		"accurate": speed <= ACCURATE_SPEED and not airborne,
 		"deviation": deviation,
 		"spray_index": spray_index,
 		"crouched": _key_crouch,

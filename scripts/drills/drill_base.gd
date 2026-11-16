@@ -6,7 +6,7 @@ extends Node3D
 ##   setup()    au début du compte à rebours (cibles et décor de l'exercice) ;
 ##   begin()    au « GO » (le chronomètre et la télémétrie démarrent) ;
 ##   update()   à chaque image pendant la session ;
-##   on_shot()  à chaque tir, on_action() à chaque appui sur Espace ;
+##   on_shot()  à chaque tir, on_action() à chaque appui sur la touche « utiliser » ;
 ##   finalize() à la fin, pour compléter le rapport de la télémétrie avec les
 ##              statistiques propres à l'exercice, ses cartes KPI et son graphique.
 ## Les nœuds créés par l'exercice sont ses enfants : ils disparaissent avec lui.
@@ -71,6 +71,11 @@ func uses_fire() -> bool:
 ## Faux pour masquer le chronomètre (exercices où il faut compter de tête).
 func shows_clock() -> bool:
 	return true
+
+
+## Vrai si Échap termine la session avec un rapport au lieu de l'abandonner.
+func ends_on_cancel() -> bool:
+	return false
 
 
 ## Nom du repère de la carte où placer le joueur ; vide = position par défaut de la carte.

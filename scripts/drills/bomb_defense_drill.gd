@@ -48,7 +48,7 @@ func setup() -> void:
 	_bomb.defused.connect(_on_bomb_defused)
 	_wave_timer = first_wave_delay
 	squad.set_objective(_bomb_position)
-	hud.set_objective("Charge posée sur le site %s. Les bots viennent la désamorcer et ripostent : tiens jusqu'à l'explosion (%d s)." % [_site, roundi(fuse_seconds)])
+	hud.set_objective("Site %s : empêche le désamorçage pendant %d s" % [_site, roundi(fuse_seconds)])
 	hud.set_speed_gauge_visible(true)
 	hud.set_side_stat("BOTS ÉLIMINÉS", "0 · 100 PV")
 

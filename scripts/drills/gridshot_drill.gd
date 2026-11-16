@@ -29,7 +29,7 @@ var _kill_intervals: PackedFloat32Array = PackedFloat32Array()
 func setup() -> void:
 	# Difficulté adaptative : les cibles rétrécissent quand le niveau monte.
 	target_radius /= sqrt(difficulty)
-	hud.set_objective("Détruis les sphères le plus vite possible.")
+	hud.set_objective("Détruis les sphères")
 	_fill_grid()
 
 

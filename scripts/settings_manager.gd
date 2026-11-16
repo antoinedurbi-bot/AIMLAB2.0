@@ -10,6 +10,7 @@ signal sensitivity_changed
 signal crosshair_changed
 signal graphics_changed
 signal audio_changed
+signal keys_changed
 
 enum CrosshairStyle { CROSS, CROSS_DOT, DOT, CIRCLE }
 enum Quality { PERFORMANCE, QUALITY, ULTRA }
@@ -26,6 +27,26 @@ const GAME_YAW := {
 	"Apex Legends": 0.022,
 	"Overwatch 2": 0.0066,
 }
+
+## Actions reconfigurables (ordre d'affichage) : identifiant, libellé.
+const ACTIONS := [
+	["forward", "Avancer"], ["back", "Reculer"], ["left", "Gauche"], ["right", "Droite"],
+	["walk", "Marcher"], ["crouch", "S'accroupir"], ["jump", "Sauter"],
+	["fire", "Tirer"], ["use", "Utiliser / désamorcer"],
+	["util1", "Fumigène (carte)"], ["util2", "Incendiaire"], ["util3", "Flash"], ["throw", "Lancer l'utilitaire"],
+]
+## Code d'une touche : > 0 = touche physique du clavier, < 0 = bouton de souris (-index).
+const DEFAULT_KEYS := {
+	"forward": KEY_W, "back": KEY_S, "left": KEY_A, "right": KEY_D,
+	"walk": KEY_SHIFT, "crouch": KEY_CTRL, "jump": KEY_SPACE,
+	"fire": -1, "use": KEY_F,
+	"util1": KEY_1, "util2": KEY_2, "util3": KEY_3, "throw": -2,
+}
+const MOUSE_BUTTON_NAMES := {1: "Clic gauche", 2: "Clic droit", 3: "Clic molette", 8: "Souris 4", 9: "Souris 5"}
+
+## action -> code. Les touches physiques suivent la position sur le clavier (ZQSD = WASD).
+var keys: Dictionary = DEFAULT_KEYS.duplicate()
+var _action_by_code: Dictionary = {}
 
 # --- Sensibilité ---
 var dpi: float = 800.0
@@ -66,6 +87,76 @@ var bot_rank: int = -1
 
 func _ready() -> void:
 	load_settings()
+	_rebuild_key_index()
+
+
+# ---------------------------------------------------------------------------
+# Touches
+# ---------------------------------------------------------------------------
+
+## Code d'un évènement clavier ou souris (0 si ce n'est ni l'un ni l'autre).
+func event_code(event: InputEvent) -> int:
+	var key := event as InputEventKey
+	if key != null:
+		return int(key.physical_keycode)
+	var button := event as InputEventMouseButton
+	if button != null:
+		return -int(button.button_index)
+	return 0
+
+
+## Action liée à un code, ou "" si aucune.
+func action_for(code: int) -> String:
+	var action: String = _action_by_code.get(code, "")
+	return action
+
+
+func key_code(action: String) -> int:
+	var code: int = keys.get(action, 0)
+	return code
+
+
+## Nom lisible de la touche d'une action, selon la disposition du clavier.
+func key_label(action: String) -> String:
+	return code_label(key_code(action))
+
+
+func code_label(code: int) -> String:
+	if code < 0:
+		var button_name: String = MOUSE_BUTTON_NAMES.get(-code, "Souris %d" % -code)
+		return button_name
+	if code == 0:
+		return "—"
+	var physical: Key = code as Key
+	var local_key := DisplayServer.keyboard_get_keycode_from_physical(physical)
+	var text := OS.get_keycode_string(local_key)
+	return text if text != "" else OS.get_keycode_string(physical)
+
+
+## Lie `code` à `action`. Si une autre action utilisait ce code, elle reçoit l'ancien
+## code de `action` (échange) : deux actions n'ont jamais la même touche.
+func bind_key(action: String, code: int) -> void:
+	var previous := key_code(action)
+	var other := action_for(code)
+	if other != "" and other != action:
+		keys[other] = previous
+	keys[action] = code
+	_rebuild_key_index()
+	keys_changed.emit()
+	save_settings()
+
+
+func reset_keys() -> void:
+	keys = DEFAULT_KEYS.duplicate()
+	_rebuild_key_index()
+	keys_changed.emit()
+	save_settings()
+
+
+func _rebuild_key_index() -> void:
+	_action_by_code.clear()
+	for action: Variant in keys:
+		_action_by_code[int(keys[action])] = str(action)
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +294,8 @@ func save_settings() -> void:
 	cfg.set_value("data", "last_drill", last_drill)
 	cfg.set_value("data", "weapon", weapon)
 	cfg.set_value("data", "bot_rank", bot_rank)
+	for action: Variant in keys:
+		cfg.set_value("keys", str(action), int(keys[action]))
 	var error := cfg.save(SAVE_PATH)
 	if error != OK:
 		push_warning("KINETIC // AIM : impossible d'enregistrer %s (erreur %d)." % [SAVE_PATH, error])
@@ -239,6 +332,9 @@ func load_settings() -> void:
 	if stored_weapon is String:
 		weapon = stored_weapon
 	bot_rank = clampi(_read_int(cfg, "data", "bot_rank", bot_rank), -1, 8)
+	for action: Variant in DEFAULT_KEYS:
+		var fallback: int = DEFAULT_KEYS[action]
+		keys[action] = _read_int(cfg, "keys", str(action), fallback)
 
 
 func _read_float(cfg: ConfigFile, section: String, key: String, fallback: float) -> float:
