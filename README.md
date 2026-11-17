@@ -167,7 +167,9 @@ Le déplacement vise le ressenti d'un FPS tactique moderne comme Valorant (`scri
 | Arrêt en relâchant | tir précis après ~85 ms |
 | Contre-strafe | tir précis après ~50 ms |
 | Tir précis | sous 1,5 m/s ; au-delà, déviation croissante ; en l'air, jusqu'à 8° |
-| Première balle | dispersion propre à l'arme (0,25° au fusil), −20 % accroupi |
+| Recul | le viseur monte réellement ; la balle part où il pointe : tire la souris vers le bas pour le contrer |
+| Trois premières balles | exactes (montée quasi nulle) ; erreur aléatoire ensuite, 0,25° au maximum au fusil, −20 % accroupi |
+| Pause de tir | le viseur redescend et la rafale repart de zéro : ~0,35 s après 3 balles, ~0,65 s après 8 |
 | Saut | 0,78 m, aucun gain de vitesse en l'air, ralentissement à l'atterrissage |
 | Balle reçue | vitesse réduite à 30 %, rétablie en 0,5 s |
 

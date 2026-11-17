@@ -11,6 +11,13 @@ extends CharacterBody3D
 ## contrôle. L'atterrissage et une balle reçue ralentissent brièvement.
 ## La vitesse de course dépend de l'arme ; marcher et s'accroupir sont silencieux.
 ##
+## Recul — chaque balle fait monter le viseur lui-même (le joueur le voit et le
+## contre en tirant la souris vers le bas) ; la balle part là où il pointe.
+## Les trois premières balles d'une rafale sont parfaitement précises, puis une
+## petite erreur aléatoire s'installe. Quand on cesse de tirer, le recul se
+## résorbe progressivement : le viseur redescend et la rafale repart de zéro,
+## en un peu moins d'une demi-seconde après une courte rafale.
+##
 ## Précision — immobile, la première balle a une faible dispersion propre à
 ## l'arme (réduite accroupi). Au-dessus de ACCURATE_SPEED le tir est dévié, de
 ## plus en plus avec la vitesse ; en l'air il part n'importe où.
@@ -59,8 +66,17 @@ const CROUCH_SPREAD_FACTOR := 0.8
 
 const Weapons := preload("res://scripts/weapons.gd")
 
-## Délai sans tirer au bout duquel la rafale repart de zéro (s).
-const SPRAY_RESET_SECONDS := 0.4
+## Balles d'une rafale sans aucune erreur aléatoire ; l'erreur atteint son maximum 4 balles plus tard.
+const ACCURATE_SHOTS := 3
+## Part de la montée normale appliquée aux trois premières balles.
+const EARLY_CLIMB_RATIO := 0.35
+## Le recul ne se résorbe qu'après ce nombre d'intervalles de tir sans tirer.
+const RECOIL_HOLD_INTERVALS := 1.5
+## Vitesse de résorption : balles de rafale « oubliées » par seconde.
+const RECOIL_RECOVERY_RATE := 16.0
+## Vitesse maximale du viseur sous l'effet du recul (°/s).
+const RECOIL_VIEW_SPEED := 140.0
+const MAX_SPRAY_HEAT := 60.0
 ## Accroupi : hauteur des yeux, vitesse, et recul multiplié par ce facteur.
 const STAND_EYE_HEIGHT := 1.7
 const CROUCH_EYE_HEIGHT := 1.15
@@ -124,7 +140,10 @@ var weapon: Dictionary = {}
 var loud_distance: float = 0.0
 var _next_shot_usec: int = 0
 var _last_shot_usec: int = 0
-var _spray_index: int = 0
+## Nombre de balles de la rafale en cours (fractionnaire pendant la résorption).
+var _spray_heat: float = 0.0
+## Décalage du viseur dû au recul (°) : x vers la droite, y vers le haut.
+var _punch: Vector2 = Vector2.ZERO
 
 @onready var pivot: Node3D = $Pivot
 @onready var camera: Camera3D = $Pivot/Camera3D
@@ -159,6 +178,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	_update_recoil(delta)
 	# Accroupissement : la caméra descend ou remonte progressivement.
 	var eye_height := CROUCH_EYE_HEIGHT if _key_crouch and move_enabled else STAND_EYE_HEIGHT
 	pivot.position.y = move_toward(pivot.position.y, eye_height, 5.0 * delta)
@@ -282,11 +302,13 @@ func reset_input() -> void:
 	_landing_slow = 1.0
 	_tag_slow = 1.0
 	_air_time = 0.0
-	_spray_index = 0
+	_spray_heat = 0.0
+	_punch = Vector2.ZERO
 	automatic = false
 	recoil_enabled = false
 	utility_enabled = false
 	Telemetry.input_mask = 0
+	_apply_rotation()
 
 
 ## Vitesse de course avec l'arme en main (m/s).
@@ -329,12 +351,39 @@ func recoil_offset(index: int) -> Vector2:
 	var climb_step: float = weapon.get("climb", 0.6)
 	var climb_shots: int = weapon.get("climb_shots", 8)
 	var sway_amplitude: float = weapon.get("sway", 1.5)
-	var climb := climb_step * float(mini(index, climb_shots))
+	# Les trois premières balles montent à peine ; la montée se concentre ensuite,
+	# pour retrouver le même total à `climb_shots` balles.
+	var units := float(mini(index, climb_shots))
+	if climb_shots > ACCURATE_SHOTS:
+		units = EARLY_CLIMB_RATIO * float(mini(index, ACCURATE_SHOTS))
+		if index > ACCURATE_SHOTS:
+			var later := float(climb_shots) - EARLY_CLIMB_RATIO * float(ACCURATE_SHOTS)
+			units += later / float(climb_shots - ACCURATE_SHOTS) * float(mini(index, climb_shots) - ACCURATE_SHOTS)
+	var climb := climb_step * units
 	var sway := 0.0
 	if index > climb_shots - 3:
 		sway = sin(float(index - climb_shots + 3) * 0.7) * sway_amplitude
 	var factor := CROUCH_RECOIL_FACTOR if _key_crouch else 1.0
 	return Vector2(sway, climb) * factor
+
+
+## Décalage du viseur (°) après `heat` balles, interpolé entre deux balles pour
+## que la résorption soit continue.
+func recoil_target(heat: float) -> Vector2:
+	var whole := floori(heat)
+	return recoil_offset(whole).lerp(recoil_offset(whole + 1), heat - float(whole))
+
+
+## Fait monter le viseur avec la rafale, puis le ramène quand on cesse de tirer.
+func _update_recoil(delta: float) -> void:
+	var idle := float(Time.get_ticks_usec() - _last_shot_usec) / 1000000.0
+	if idle > _fire_interval() * RECOIL_HOLD_INTERVALS:
+		_spray_heat = move_toward(_spray_heat, 0.0, RECOIL_RECOVERY_RATE * delta)
+	var wanted := recoil_target(_spray_heat) if recoil_enabled else Vector2.ZERO
+	if _punch.is_equal_approx(wanted):
+		return
+	_punch = _punch.move_toward(wanted, RECOIL_VIEW_SPEED * delta)
+	_apply_rotation()
 
 
 ## Dégâts de l'arme en main sur une cible à 100 points de vie.
@@ -385,8 +434,8 @@ func _raw_counts(motion: InputEventMouseMotion) -> Vector2:
 
 
 func _apply_rotation() -> void:
-	rotation.y = deg_to_rad(wrapf(yaw_deg, -180.0, 180.0))
-	pivot.rotation.x = deg_to_rad(pitch_deg)
+	rotation.y = deg_to_rad(wrapf(yaw_deg - _punch.x, -180.0, 180.0))
+	pivot.rotation.x = deg_to_rad(clampf(pitch_deg + _punch.y, -MAX_PITCH_DEG, MAX_PITCH_DEG))
 
 
 # ---------------------------------------------------------------------------
@@ -466,20 +515,18 @@ func _fire() -> void:
 		var spread := AIR_SPREAD_DEG if airborne else lerpf(MIN_MOVING_SPREAD_DEG, MAX_MOVING_SPREAD_DEG, excess)
 		deviation = Vector2.from_angle(randf() * TAU) * (spread * sqrt(randf()))
 
-	# Rafale : l'index repart de zéro après une courte pause.
-	var fire_usec := Time.get_ticks_usec()
-	if float(fire_usec - _last_shot_usec) / 1000000.0 > SPRAY_RESET_SECONDS:
-		_spray_index = 0
-	var spray_index := _spray_index
-	_spray_index += 1
-	_last_shot_usec = fire_usec
+	# Numéro de la balle dans la rafale ; le recul ne se résorbe qu'après une vraie pause.
+	var spray_index := roundi(_spray_heat)
+	_spray_heat = minf(_spray_heat + 1.0, MAX_SPRAY_HEAT)
+	_last_shot_usec = Time.get_ticks_usec()
 	if recoil_enabled:
-		# Dispersion propre à l'arme, même immobile, puis recul de la rafale.
-		var base_spread: float = weapon.get("spread", 0.25)
+		# Le recul est déjà dans l'orientation du viseur. Les premières balles sont
+		# exactes ; ensuite une petite erreur aléatoire propre à l'arme s'installe.
+		var ramp := clampf(float(spray_index - (ACCURATE_SHOTS - 1)) / 4.0, 0.0, 1.0)
+		var error: float = weapon.get("spread", 0.25) * ramp
 		if _key_crouch:
-			base_spread *= CROUCH_SPREAD_FACTOR
-		deviation += Vector2.from_angle(randf() * TAU) * (base_spread * sqrt(randf()))
-		deviation += recoil_offset(spray_index)
+			error *= CROUCH_SPREAD_FACTOR
+		deviation += Vector2.from_angle(randf() * TAU) * (error * sqrt(randf()))
 
 	# Le rayon est dévié le temps du tir (x > 0 : vers la droite, y > 0 : vers le haut).
 	aim_ray.rotation = Vector3(deg_to_rad(deviation.y), deg_to_rad(-deviation.x), 0.0)

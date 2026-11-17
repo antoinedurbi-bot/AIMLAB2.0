@@ -4,11 +4,11 @@ extends RefCounted
 ##
 ##   automatic   : tir continu tant que le clic est maintenu ;
 ##   interval    : temps entre deux balles (s) ;
-##   climb       : montée verticale du recul par balle (°), sur `climb_shots` balles ;
+##   climb       : montée du viseur par balle (°), sur `climb_shots` balles ;
 ##   sway        : amplitude du balancement horizontal ensuite (°) ;
 ##   head / body : dégâts (une cible a 100 points de vie) ;
 ##   speed       : vitesse de course arme en main (m/s) ;
-##   spread      : dispersion de la première balle, immobile et debout (°).
+##   spread      : erreur aléatoire maximale d'une rafale, atteinte à partir de la 7e balle (°).
 
 const ORDER := ["rifle", "smg", "pistol"]
 const PROFILES := {
